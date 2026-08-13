@@ -5,3 +5,7 @@ pytest-cache-files-*/
 .arbor/
 experiment_records/
 .win-compat-tmp/
+.autoresearch/
+.coordinator/
+results/
+cache_old_*/
