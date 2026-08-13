@@ -1,0 +1,10 @@
+plugin: initial_loop_tsp
+plugin_profile: smoke
+
+coordinator:
+  merge_threshold: 0.0
+  eval_retries: 1
+  enforce_protected: true
+
+ui:
+  interaction_mode: review
