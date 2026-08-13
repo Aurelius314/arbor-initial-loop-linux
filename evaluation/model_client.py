@@ -9,11 +9,11 @@ from typing import Any
 
 
 def call_openai_compatible(*, messages: list[dict[str, str]], **_: Any) -> str:
-    key = os.environ.get("TSP_SOLVER_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
+    key = os.environ.get("COP_SOLVER_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
     if not key:
-        raise RuntimeError("set TSP_SOLVER_API_KEY or OPENROUTER_API_KEY")
-    base = os.environ.get("TSP_SOLVER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
-    model = os.environ.get("TSP_SOLVER_MODEL", "deepseek/deepseek-chat")
+        raise RuntimeError("set COP_SOLVER_API_KEY or OPENROUTER_API_KEY")
+    base = os.environ.get("COP_SOLVER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    model = os.environ.get("COP_SOLVER_MODEL", "deepseek/deepseek-chat")
     payload = json.dumps({"model": model, "temperature": 0, "messages": messages}).encode()
     request = urllib.request.Request(
         f"{base}/chat/completions", data=payload,

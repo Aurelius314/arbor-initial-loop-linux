@@ -1,4 +1,5 @@
-plugin: initial_loop_tsp
+# 这次 Arbor 怎么跑
+plugin: initial_loop_cop
 plugin_profile: smoke
 
 coordinator:
@@ -7,4 +8,4 @@ coordinator:
   enforce_protected: true
 
 ui:
-  interaction_mode: review
+  interaction_mode: auto

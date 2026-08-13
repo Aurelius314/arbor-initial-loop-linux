@@ -21,18 +21,19 @@ def load_eval():
 def test_mock_dev_evaluation_is_finite_and_valid():
     module = load_eval()
     instances = json.loads((ROOT / "data/tsp/dev.json").read_text(encoding="utf-8"))
-    score, rows = module.evaluate(instances, module.mock_backend)
+    score, rows = module.evaluate_problem("tsp", instances, module.mock_backend)
     assert len(rows) == 2
     assert all(row["status"] == "ok" for row in rows)
-    assert all(row["calls"] == 5 for row in rows)
+    assert all(row["calls"] == 12 for row in rows)
     assert isinstance(score, float)
 
 
 def test_scoring_labels_are_not_exposed_to_harness():
     module = load_eval()
     instance = json.loads((ROOT / "data/tsp/dev.json").read_text(encoding="utf-8"))[0]
-    assert set(module.public_instance(instance)) == {"num_nodes", "instruction", "input", "instance"}
-    assert "output" not in module.public_instance(instance)
+    public = module.get_problem("tsp").public_instance(instance)
+    assert set(public) == {"problem_type", "num_nodes", "instruction", "input", "instance"}
+    assert "output" not in public
 
 
 def test_call_budget_is_enforced():
@@ -45,3 +46,9 @@ def test_call_budget_is_enforced():
         pass
     else:
         raise AssertionError("budget accepted an extra call")
+
+
+def test_gap_respects_objective_direction():
+    module = load_eval()
+    assert module.gap_percent(110.0, 100.0, "min") == 10.0
+    assert module.gap_percent(90.0, 100.0, "max") == 10.0

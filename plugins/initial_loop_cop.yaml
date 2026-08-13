@@ -1,0 +1,37 @@
+# 这个 COP benchmark 怎么评
+schema_version: 1
+name: initial_loop_cop
+description: "Evolve initial_loop.py to minimize mean optimality gap across COP problems"
+
+eval_contract:
+  metric_direction: minimize
+  eval_cmd: 'python "{cwd}/eval.py" --split dev'
+  eval_cmd_test: 'python "{cwd}/eval.py" --split test'
+  eval_timeout: 3600
+  dataset_info: "Each data/<problem>/ directory contains dev.json and test.json"
+
+protected_paths:
+  - "data/**"
+  - "evaluation/**"
+  - "eval.py"
+  - "plugins/**"
+
+# 注入给 Coordinator，说明全局研究目标
+meta_preamble_inject: |
+  Evolve the agent harness `initial_loop.py` to minimize mean optimality gap across the configured
+  combinatorial optimization problems.
+
+# 注入给每个 Executor，规定具体实验流程
+sub_workflow_inject: |
+  Edit only the agent harness `initial_loop.py`. Evaluate with `python eval.py --split dev` and
+  never use test during ordinary experimentation. 
+  Keep the harness candidate compatible with the protected evaluator: 
+  the module must expose a callable `SimpleEvol` constructor, 
+  and the resulting object must provide `evolve()`.
+
+profiles:
+  smoke:
+    max_cycles: 3
+    executor_max_turns: 12
+    max_tree_depth: 2
+# 标准 profile 参数: max_cycles,max_tree_depth,executor_timeout

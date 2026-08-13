@@ -4,3 +4,4 @@ __pycache__/
 pytest-cache-files-*/
 .arbor/
 experiment_records/
+.win-compat-tmp/

@@ -1,18 +1,22 @@
-# Arbor Initial Loop - minimal runnable benchmark
+# Arbor Initial Loop - unified COP benchmark
 
-Arbor evolves `initial_loop.py`. The protected evaluator calls that module on
-all instances in the selected split and reports mean optimality gap; lower is
-better. Invalid candidates receive a 100% gap for that instance.
+Arbor evolves `initial_loop.py`. The protected evaluator discovers every
+`data/<problem>/<split>.json`, evaluates it through
+`evaluation/problems/<problem>.py`, and reports the problem-balanced mean
+optimality gap; lower is better.
 
 ## Split and edit contract
 
-- Evolution data: `data/tsp/dev.json` (2 instances).
-- Held-out evaluation data: `data/tsp/test.json` (4 instances).
+- Evolution data: `data/<problem>/dev.json`.
+- Held-out evaluation data: `data/<problem>/test.json`.
 - Editable artifact: `initial_loop.py` only.
 - Protected: `eval.py`, `evaluation/`, `data/`, and `plugins/`.
 - The evaluator strips `output` before passing an instance to the harness.
-- Solver calls are capped at five per instance, matching the baseline's four
-  candidate calls and one intermediate compression call.
+- Solver calls are capped at six per instance, matching the baseline's four
+  candidate calls, one intermediate compression call, and one final summary.
+- Local traces are retained under
+  `experiment_records/<split>/<problem>/<timestamp>/`; they are git-ignored
+  and do not participate in scoring.
 
 ## Smoke test
 
