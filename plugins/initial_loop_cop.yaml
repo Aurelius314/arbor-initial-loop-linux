@@ -20,6 +20,9 @@ protected_paths:
 meta_preamble_inject: |
   Evolve the agent harness `initial_loop.py` to minimize mean optimality gap across the configured
   combinatorial optimization problems.
+  You may modify prompts, context and memory management, skills,
+  parsing, error recovery, rollout orchestration, and other control logic
+  inside `initial_loop.py`. Do not modify data, evaluators, model or API configuration, or scoring.
 
 
 # 注入给每个 Executor，规定具体实验流程
