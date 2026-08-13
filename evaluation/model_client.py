@@ -14,7 +14,7 @@ def call_openai_compatible(*, messages: list[dict[str, str]], **_: Any) -> str:
         raise RuntimeError("set COP_SOLVER_API_KEY or OPENROUTER_API_KEY")
     base = os.environ.get("COP_SOLVER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
     model = os.environ.get("COP_SOLVER_MODEL", "deepseek/deepseek-chat")
-    payload = json.dumps({"model": model, "temperature": 0, "messages": messages}).encode()
+    payload = json.dumps({"model": model, "temperature": 1.0, "messages": messages}).encode()
     request = urllib.request.Request(
         f"{base}/chat/completions", data=payload,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},

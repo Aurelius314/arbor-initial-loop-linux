@@ -21,10 +21,22 @@ meta_preamble_inject: |
   Evolve the agent harness `initial_loop.py` to minimize mean optimality gap across the configured
   combinatorial optimization problems.
 
+# meta_init_inject: |
+#   Before proposing or executing any hypothesis, evaluate the unmodified initial harness once on
+#   both splits with `python eval.py --split dev` and `python eval.py --split test`.
+#   Record the dev result as both `baseline_score` and `trunk_score`, and record the test result as
+#   both `test_baseline_score` and `test_trunk_score` using TreeSetMeta. This initialization is
+#   mandatory. After initialization, Executors must use dev only; test may be queried only by the
+#   held-out admission gate for a dev-improving candidate.
+
 # 注入给每个 Executor，规定具体实验流程
 sub_workflow_inject: |
   Edit only the agent harness `initial_loop.py`. Evaluate with `python eval.py --split dev` and
-  never use test during ordinary experimentation. 
+  never use test during ordinary experimentation.
+  After every candidate implementation, you must run the protected development evaluator
+  `python eval.py --split dev`; its reported `score:` is the only official candidate result.
+  Local unit checks or `python -c` commands may assist debugging but must never replace the
+  protected development evaluation, and any non-zero exit or traceback must be investigated.
   Keep the harness candidate compatible with the protected evaluator: 
   the module must expose a callable `SimpleEvol` constructor, 
   and the resulting object must provide `evolve()`.
