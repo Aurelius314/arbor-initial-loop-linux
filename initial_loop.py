@@ -39,8 +39,13 @@ class SimpleEvol:
         self.problem_warn = "Visit every city exactly once. Do not repeat any city, except that the starting city may appear once again as the final city to close the tour."
         self.max_experiments = cfg.max_experiments
         self.compress_every = cfg.compress_every
+        self.max_generation_attempts = getattr(
+            cfg, "max_generation_attempts", self.max_experiments * 3
+        )
         if self.max_experiments < 1:
             raise ValueError("max_experiments must be >= 1")
+        if self.max_generation_attempts < self.max_experiments:
+            raise ValueError("max_generation_attempts must be >= max_experiments")
 
         if eval_dataset is None:
             raise ValueError("eval_dataset must be injected by the protected evaluator")
@@ -428,9 +433,14 @@ class SimpleEvol:
         logger.info("=" * 70)
 
         self.experiment_count = 0
+        generation_attempts = 0
         last_compress_at = 0
         optimal_obj = self._load_optimal_objective()
-        while self.experiment_count < self.max_experiments:
+        while (
+            self.experiment_count < self.max_experiments
+            and generation_attempts < self.max_generation_attempts
+        ):
+            generation_attempts += 1
 
             logger.info("=" * 70)
             logger.info(f"[Iteration {self.experiment_count}] Completed {self.experiment_count}/{self.max_experiments} evaluations")
@@ -518,6 +528,14 @@ class SimpleEvol:
             ):
                 self.compress_context()
                 last_compress_at = self.experiment_count
+
+        if self.experiment_count < self.max_experiments:
+            logger.warning(
+                "Stopped after %s generation attempts with %s/%s valid experiments.",
+                generation_attempts,
+                self.experiment_count,
+                self.max_experiments,
+            )
 
         self._request_final_summary()
 

@@ -17,6 +17,12 @@ def public_instance(instance: dict[str, Any]) -> dict[str, Any]:
 
 def validate_solution(solution: Any, instance: dict[str, Any]) -> list[int]:
     n = int(instance["num_nodes"])
+    if (
+        isinstance(solution, list)
+        and len(solution) == n + 1
+        and solution[0] == solution[-1]
+    ):
+        solution = solution[:-1]
     if not isinstance(solution, list) or len(solution) != n or any(type(x) is not int for x in solution):
         raise ValueError(f"route must be an integer list of length {n}")
     if set(solution) != set(range(n)):

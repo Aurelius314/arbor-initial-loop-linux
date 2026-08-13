@@ -7,5 +7,17 @@ coordinator:
   eval_retries: 1
   enforce_protected: true
 
+# OpenRouter's openai-chat path does not expose Arbor's explicit prompt cache.
+# Compact earlier instead of repeatedly sending an ever-growing full history.
+context:
+  window: 64000
+  compact_threshold: 0.60
+  compact_keep_recent: 8
+
+search:
+  enabled: false
+  grounded_ideation: false
+  auto_search_on_add: false
+
 ui:
   interaction_mode: auto

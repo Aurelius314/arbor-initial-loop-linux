@@ -74,29 +74,32 @@ def evaluate_problem(
     records_dir: Path | None = None,
 ):
     problem = get_problem(problem_name)
-    public_instances = [problem.public_instance(instance) for instance in instances]
-    client = _Client(backend, limit=6 * len(instances))
-    solver = SimpleEvol(
-        cfg=SimpleNamespace(max_experiments=4, compress_every=2),
-        root_dir=ROOT,
-        client=client,
-        eval_dataset=public_instances,
-        eval_tool=_EvalTool(problem, instances),
-        problem_name=problem_name,
-        obj_type=problem.OBJ_TYPE,
-        exp_records_dir=records_dir,
-    )
-    try:
-        solutions, objectives = solver.evolve()
-        if len(instances) == 1:
-            solutions, objectives = [solutions], [objectives]
-        failure = None
-    except Exception as exc:
-        solutions, objectives = [None] * len(instances), [None] * len(instances)
-        failure = f"error: {type(exc).__name__}: {exc}"
-
     rows = []
-    for index, (instance, objective) in enumerate(zip(instances, objectives)):
+    for index, instance in enumerate(instances):
+        # Each instance owns its model budget and failure boundary. Twelve
+        # generation attempts + one compression + one final summary = 14.
+        client = _Client(backend, limit=14)
+        instance_records = records_dir / f"item_{index:03d}" if records_dir else None
+        solver = SimpleEvol(
+            cfg=SimpleNamespace(
+                max_experiments=4,
+                compress_every=2,
+                max_generation_attempts=12,
+            ),
+            root_dir=ROOT,
+            client=client,
+            eval_dataset=[problem.public_instance(instance)],
+            eval_tool=_EvalTool(problem, [instance]),
+            problem_name=problem_name,
+            obj_type=problem.OBJ_TYPE,
+            exp_records_dir=instance_records,
+        )
+        try:
+            _solution, objective = solver.evolve()
+            failure = None if objective is not None else "error: no feasible solution produced"
+        except Exception as exc:
+            objective = None
+            failure = f"error: {type(exc).__name__}: {exc}"
         gap = invalid_gap if objective is None else gap_percent(
             objective, reference_objective(instance), problem.OBJ_TYPE
         )

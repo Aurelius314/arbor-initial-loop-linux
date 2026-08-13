@@ -24,7 +24,7 @@ def test_mock_dev_evaluation_is_finite_and_valid():
     score, rows = module.evaluate_problem("tsp", instances, module.mock_backend)
     assert len(rows) == 2
     assert all(row["status"] == "ok" for row in rows)
-    assert all(row["calls"] == 12 for row in rows)
+    assert all(row["calls"] == 6 for row in rows)
     assert isinstance(score, float)
 
 
@@ -52,3 +52,27 @@ def test_gap_respects_objective_direction():
     module = load_eval()
     assert module.gap_percent(110.0, 100.0, "min") == 10.0
     assert module.gap_percent(90.0, 100.0, "max") == 10.0
+
+
+def test_tsp_accepts_explicit_closed_route():
+    module = load_eval()
+    problem = module.get_problem("tsp")
+    instance = {"num_nodes": 3, "instance": [[0, 0], [1, 0], [0, 1]]}
+    assert problem.validate_solution([0, 1, 2, 0], instance) == [0, 1, 2]
+
+
+def test_one_instance_failure_does_not_poison_the_next():
+    module = load_eval()
+    instances = json.loads((ROOT / "data/tsp/dev.json").read_text(encoding="utf-8"))
+    calls = 0
+
+    def backend(*, messages, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls <= 14:
+            return "invalid"
+        return module.mock_backend(messages=messages, **kwargs)
+
+    _score, rows = module.evaluate_problem("tsp", instances, backend)
+    assert rows[0]["status"].startswith("error:")
+    assert rows[1]["status"] == "ok"
