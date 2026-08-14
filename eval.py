@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -119,13 +120,20 @@ def evaluate_problem(
 
 def evaluate_split(split: str, backend: Callable[..., str], invalid_gap: float = 100.0):
     problem_scores, all_rows = [], []
-    run_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    evaluation_id = datetime.now().strftime("eval_%Y%m%d_%H%M%S_%f")
+    arbor_run_id = Path(
+        os.environ.get("ARBOR_RUN_ID", f"standalone_{datetime.now():%Y%m%d_%H%M%S}")
+    ).name
+    project_root = Path(os.environ.get("ARBOR_PROJECT_ROOT", str(ROOT))).resolve()
     for problem_dir in sorted(path for path in (ROOT / "data").iterdir() if path.is_dir()):
         data_path = problem_dir / f"{split}.json"
         if not data_path.exists():
             continue
         instances = json.loads(data_path.read_text(encoding="utf-8"))
-        records_dir = ROOT / "experiment_records" / split / problem_dir.name / run_id
+        records_dir = (
+            project_root / "experiment_records" / arbor_run_id /
+            split / problem_dir.name / evaluation_id
+        )
         records_dir.mkdir(parents=True, exist_ok=True)
         file_handler = logging.FileHandler(records_dir / "run.log", encoding="utf-8")
         file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
