@@ -70,6 +70,17 @@ def evaluate_problem(
     problem = get_problem(problem_name)
     rows = []
     instance_attempts = max(1, int(os.environ.get("COP_EVAL_NETWORK_ATTEMPTS", "3")))
+    solver_cfg = SimpleNamespace(
+        max_experiments=16,
+        compress_every=5,
+        max_generation_attempts=24,
+    )
+    compression_calls = (
+        (solver_cfg.max_experiments - 1) // solver_cfg.compress_every
+        if solver_cfg.compress_every > 0 else 0
+    )
+    # Generation attempts + scheduled compression calls + final summary.
+    call_limit = solver_cfg.max_generation_attempts + compression_calls + 1
     for index, instance in enumerate(instances):
         instance_records = records_dir / f"instance_{index:03d}" if records_dir else None
         total_calls = 0
@@ -78,13 +89,9 @@ def evaluate_problem(
         for instance_attempt in range(1, instance_attempts + 1):
             # Each retry receives a fresh client and call budget so a network
             # outage cannot consume the next attempt's generation budget.
-            client = _Client(backend, limit=14)
+            client = _Client(backend, limit=call_limit)
             solver = SimpleEvol(
-                cfg=SimpleNamespace(
-                    max_experiments=16,
-                    compress_every=5,
-                    max_generation_attempts=24,
-                ),
+                cfg=solver_cfg,
                 root_dir=ROOT,
                 client=client,
                 eval_dataset=[problem.public_instance(instance)],
