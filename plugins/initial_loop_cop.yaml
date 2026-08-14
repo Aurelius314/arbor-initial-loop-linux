@@ -39,6 +39,11 @@ sub_workflow_inject: |
   inject a backend, use archived test utilities, or replace these commands.
   After modifying `initial_loop.py`, first run `python -m py_compile initial_loop.py` and fix
   every syntax error before starting the protected development evaluation.
+  Before the formal development evaluation, verify with observable evidence that every newly
+  introduced mechanism is actually exercised end to end (for example, confirm its call path,
+  state change, generated artifact, or targeted log entry). If the mechanism is unreachable,
+  inactive, or only partially wired, continue fixing it; do not submit an evaluation result or
+  conclude that the research hypothesis failed merely because the code compiles or eval exits.
   After every candidate implementation, you must run the protected development evaluator
   `python eval.py --split dev`; its reported `score:` is the only official candidate result.
   Local unit checks or `python -c` commands may assist debugging but must never replace the

@@ -10,7 +10,6 @@ import json
 import logging
 from pathlib import Path
 import time
-from datetime import datetime
 import re
 
 logger = logging.getLogger(__name__)
@@ -27,6 +26,7 @@ class SimpleEvol:
         problem_name="tsp",
         obj_type="min",
         exp_records_dir=None,
+        record_instance_index=None,
     ):
         self.cfg = cfg
         self.client = client
@@ -54,6 +54,7 @@ class SimpleEvol:
             raise ValueError("eval_dataset must contain a non-empty list")
 
         self.exp_records_dir = Path(exp_records_dir) if exp_records_dir else None
+        self.record_instance_index = record_instance_index
         if self.exp_records_dir is not None:
             self.exp_records_dir.mkdir(parents=True, exist_ok=True)
 
@@ -72,8 +73,6 @@ class SimpleEvol:
         self.eval_tool = eval_tool
         self.messages = self._build_initial_messages()
         self.experiment_results = []
-
-        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
     # -------------------------------------------------------------------------
     # Prompt / message construction
@@ -323,17 +322,14 @@ class SimpleEvol:
         """Persist one direct-solution experiment, following utils.py's format."""
         if self.exp_records_dir is None:
             return None
-        instance_dir = (
-            self.exp_records_dir
-            / self.timestamp
-            / f"instance_{self.current_instance_index:03d}"
-        )
+        instance_dir = self.exp_records_dir
         instance_dir.mkdir(parents=True, exist_ok=True)
         record_path = instance_dir / f"exp_{record['experiment']:03d}.txt"
 
         content = [
             f"Experiment: {record['experiment']}",
-            f"Instance: {self.current_instance_index}",
+            "Instance: "
+            f"{self.current_instance_index if self.record_instance_index is None else self.record_instance_index}",
             f"Problem: {self.problem_name}",
             f"Problem size: {self.problem_size}",
             "",
@@ -422,9 +418,12 @@ class SimpleEvol:
         logger.info("=" * 70)
         logger.info("SimpleEvol started.")
         logger.info(f"Problem: {self.problem_name}")
-        logger.info(
-            f"Dev instance: {self.current_instance_index + 1}/{len(self.eval_dataset)}"
-        )
+        if self.record_instance_index is None:
+            logger.info(
+                f"Dev instance: {self.current_instance_index + 1}/{len(self.eval_dataset)}"
+            )
+        else:
+            logger.info(f"Dataset instance: {self.record_instance_index}")
         logger.info(f"Problem size: {self.problem_size}")
         logger.info(f"Max experiments: {self.max_experiments}")
         logger.info(f"Obj Type: {self.obj_type}")

@@ -7,6 +7,7 @@ import argparse
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -71,7 +72,7 @@ def evaluate_problem(
         # Each instance owns its model budget and failure boundary. Twelve
         # generation attempts + one compression + one final summary = 14.
         client = _Client(backend, limit=14)
-        instance_records = records_dir / f"item_{index:03d}" if records_dir else None
+        instance_records = records_dir / f"instance_{index:03d}" if records_dir else None
         solver = SimpleEvol(
             cfg=SimpleNamespace(
                 max_experiments=4,
@@ -85,6 +86,7 @@ def evaluate_problem(
             problem_name=problem_name,
             obj_type=problem.OBJ_TYPE,
             exp_records_dir=instance_records,
+            record_instance_index=index,
         )
         try:
             _solution, objective = solver.evolve()
@@ -111,11 +113,26 @@ def evaluate_problem(
 
 def evaluate_split(split: str, backend: Callable[..., str], invalid_gap: float = 100.0):
     problem_scores, all_rows = [], []
-    evaluation_id = datetime.now().strftime("eval_%Y%m%d_%H%M%S_%f")
     arbor_run_id = Path(
         os.environ.get("ARBOR_RUN_ID", f"standalone_{datetime.now():%Y%m%d_%H%M%S}")
     ).name
     project_root = Path(os.environ.get("ARBOR_PROJECT_ROOT", str(ROOT))).resolve()
+    explicit_event = os.environ.get("ARBOR_EVAL_EVENT", "").strip()
+    node_id = os.environ.get("ARBOR_NODE_ID", "").strip()
+    if explicit_event:
+        event = explicit_event
+    elif node_id:
+        event = f"{'heldout' if split == 'test' else 'candidate'}_{node_id}"
+    elif split == "test":
+        event = "heldout"
+    elif "ARBOR_RUN_ID" not in os.environ:
+        event = "standalone"
+    elif ROOT.resolve() == project_root:
+        event = "baseline"
+    else:
+        event = "candidate"
+    event = re.sub(r"[^A-Za-z0-9_.-]+", "_", event).strip("_.-") or "unknown"
+    evaluation_id = f"eval_{event}_{datetime.now():%Y%m%d_%H%M%S_%f}"
     for problem_dir in sorted(path for path in (ROOT / "data").iterdir() if path.is_dir()):
         data_path = problem_dir / f"{split}.json"
         if not data_path.exists():
@@ -127,12 +144,17 @@ def evaluate_split(split: str, backend: Callable[..., str], invalid_gap: float =
         )
         records_dir.mkdir(parents=True, exist_ok=True)
         file_handler = logging.FileHandler(records_dir / "run.log", encoding="utf-8")
+        file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-        logging.getLogger().addHandler(file_handler)
+        root_logger = logging.getLogger()
+        previous_log_level = root_logger.level
+        root_logger.setLevel(logging.INFO)
+        root_logger.addHandler(file_handler)
         try:
             score, rows = evaluate_problem(problem_dir.name, instances, backend, invalid_gap, records_dir)
         finally:
-            logging.getLogger().removeHandler(file_handler)
+            root_logger.removeHandler(file_handler)
+            root_logger.setLevel(previous_log_level)
             file_handler.close()
         problem_scores.append(score)
         all_rows.extend(rows)
