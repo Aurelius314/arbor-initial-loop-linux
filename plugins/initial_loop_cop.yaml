@@ -46,6 +46,6 @@ sub_workflow_inject: |
 profiles:
   smoke:
     max_cycles: 3
-    executor_max_turns: 12
+    # executor_max_turns: 12
     max_tree_depth: 2
 # 标准 profile 参数: max_cycles,max_tree_depth,executor_timeout
