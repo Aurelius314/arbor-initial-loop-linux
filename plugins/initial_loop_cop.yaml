@@ -23,6 +23,8 @@ meta_preamble_inject: |
   You may modify prompts, context and memory management, skills,
   parsing, error recovery, rollout orchestration, and other control logic
   inside `initial_loop.py`. Do not modify data, evaluators, model or API configuration, or scoring.
+  Do not inspect or execute anything under `arbor-bin/`; it contains archived records and
+  offline test utilities that are not research evidence and are outside the evaluation protocol.
   The host terminal is Windows PowerShell. Use PowerShell-native syntax for every command
   (for example, `Get-ChildItem -Name`); do not use CMD/Bash-only forms such as `dir /B`,
   `grep`, or `&&`.
@@ -32,6 +34,9 @@ meta_preamble_inject: |
 sub_workflow_inject: |
   Edit only the agent harness `initial_loop.py`. Evaluate with `python eval.py --split dev` and
   never use test during ordinary experimentation.
+  The only official commands are exactly `python eval.py --split dev` for development and
+  `python eval.py --split test` for held-out admission. Never import evaluator internals,
+  inject a backend, use archived test utilities, or replace these commands.
   After modifying `initial_loop.py`, first run `python -m py_compile initial_loop.py` and fix
   every syntax error before starting the protected development evaluation.
   After every candidate implementation, you must run the protected development evaluator

@@ -122,7 +122,7 @@ def evaluate_split(split: str, backend: Callable[..., str], invalid_gap: float =
             continue
         instances = json.loads(data_path.read_text(encoding="utf-8"))
         records_dir = (
-            project_root / "experiment_records" / arbor_run_id /
+            project_root / "arbor-bin" / "experiment_records" / arbor_run_id /
             split / problem_dir.name / evaluation_id
         )
         records_dir.mkdir(parents=True, exist_ok=True)
