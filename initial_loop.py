@@ -1,11 +1,3 @@
-'''
-end-to-end solution for COP
-
-initial simpleevol-style agent loop:
-
-problem + compressed history -> LLM solution -> evaluator -> feedback
-'''
-
 import json
 import logging
 from pathlib import Path

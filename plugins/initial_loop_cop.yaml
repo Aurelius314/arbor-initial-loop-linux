@@ -1,4 +1,3 @@
-# 这个 COP benchmark 怎么评
 schema_version: 1
 name: initial_loop_cop
 description: "Evolve initial_loop.py to minimize mean optimality gap across COP problems"
@@ -34,6 +33,9 @@ meta_preamble_inject: |
 sub_workflow_inject: |
   Edit only the agent harness `initial_loop.py`. Evaluate with `python eval.py --split dev` and
   never use test during ordinary experimentation.
+  Data flow: `eval.py` supplies a public COP instance and protected evaluation tool;
+  `SimpleEvol.evolve()` returns `(best_solution, best_objective)`, then `eval.py` computes each
+  instance's optimality gap against its protected reference and reports their mean as `score` (lower is better).
   The only official commands are exactly `python eval.py --split dev` for development and
   `python eval.py --split test` for held-out admission. Never import evaluator internals,
   inject a backend, use archived test utilities, or replace these commands.
@@ -60,4 +62,7 @@ profiles:
     max_cycles: 3
     executor_max_turns: 15
     max_tree_depth: 2
-# 标准 profile 参数: max_cycles,max_tree_depth,executor_timeout
+  paper:
+    time_budget: 172800
+    max_cycles: 20
+    max_tree_depth: 2

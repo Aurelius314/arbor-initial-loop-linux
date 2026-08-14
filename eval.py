@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -68,35 +69,50 @@ def evaluate_problem(
 ):
     problem = get_problem(problem_name)
     rows = []
+    instance_attempts = max(1, int(os.environ.get("COP_EVAL_NETWORK_ATTEMPTS", "3")))
     for index, instance in enumerate(instances):
-        # Each instance owns its model budget and failure boundary. Twelve
-        # generation attempts + one compression + one final summary = 14.
-        client = _Client(backend, limit=14)
         instance_records = records_dir / f"instance_{index:03d}" if records_dir else None
-        solver = SimpleEvol(
-            cfg=SimpleNamespace(
-                max_experiments=4,
-                compress_every=2,
-                max_generation_attempts=12,
-            ),
-            root_dir=ROOT,
-            client=client,
-            eval_dataset=[problem.public_instance(instance)],
-            eval_tool=_EvalTool(problem, [instance]),
-            problem_name=problem_name,
-            obj_type=problem.OBJ_TYPE,
-            exp_records_dir=instance_records,
-            record_instance_index=index,
-        )
-        try:
-            _solution, objective = solver.evolve()
-            failure = None if objective is not None else "error: no feasible solution produced"
-        except TransientAPIError as exc:
-            objective = None
-            failure = f"infrastructure_error: {exc}"
-        except Exception as exc:
-            objective = None
-            failure = f"error: {type(exc).__name__}: {exc}"
+        total_calls = 0
+        objective = None
+        failure = None
+        for instance_attempt in range(1, instance_attempts + 1):
+            # Each retry receives a fresh client and call budget so a network
+            # outage cannot consume the next attempt's generation budget.
+            client = _Client(backend, limit=14)
+            solver = SimpleEvol(
+                cfg=SimpleNamespace(
+                    max_experiments=16,
+                    compress_every=5,
+                    max_generation_attempts=24,
+                ),
+                root_dir=ROOT,
+                client=client,
+                eval_dataset=[problem.public_instance(instance)],
+                eval_tool=_EvalTool(problem, [instance]),
+                problem_name=problem_name,
+                obj_type=problem.OBJ_TYPE,
+                exp_records_dir=instance_records,
+                record_instance_index=index,
+            )
+            try:
+                _solution, objective = solver.evolve()
+                failure = None if objective is not None else "error: no feasible solution produced"
+            except TransientAPIError as exc:
+                objective = None
+                failure = f"infrastructure_error: {exc}"
+                if instance_attempt < instance_attempts:
+                    logging.getLogger(__name__).warning(
+                        "Network failure on %s instance %d; restarting instance attempt %d/%d",
+                        problem_name, index, instance_attempt + 1, instance_attempts,
+                    )
+                    time.sleep(min(2 ** (instance_attempt - 1), 8))
+            except Exception as exc:
+                objective = None
+                failure = f"error: {type(exc).__name__}: {exc}"
+            finally:
+                total_calls += client.call.calls
+            if not failure or not failure.startswith("infrastructure_error:"):
+                break
         gap = None if failure and failure.startswith("infrastructure_error:") else (
             invalid_gap if objective is None else gap_percent(
                 objective, reference_objective(instance), problem.OBJ_TYPE
@@ -104,7 +120,7 @@ def evaluate_problem(
         )
         rows.append({
             "problem": problem_name, "instance": index, "objective": objective,
-            "gap": gap, "calls": client.call.calls, "status": failure or "ok",
+            "gap": gap, "calls": total_calls, "status": failure or "ok",
         })
     if any(row["gap"] is None for row in rows):
         return None, rows

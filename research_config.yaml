@@ -1,6 +1,5 @@
-# 这次 Arbor 怎么跑
 plugin: initial_loop_cop
-plugin_profile: smoke
+plugin_profile: paper
 
 coordinator:
   merge_threshold: 0.0
@@ -13,11 +12,6 @@ context:
   window: 64000
   compact_threshold: 0.60
   compact_keep_recent: 8
-
-search:
-  enabled: false
-  grounded_ideation: false
-  auto_search_on_add: false
 
 ui:
   interaction_mode: auto
