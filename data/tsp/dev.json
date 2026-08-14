@@ -200,202 +200,350 @@
         ]
     },
     {
-        "num_nodes": "48",
-        "instruction": "Solve the Traveling Salesman Problem (TSP) for the given list of 48 cities. Each city is represented as a node with coordinates (x, y). Identify the shortest route that visits every city exactly once and returns to the starting city. The input includes city coordinates, the 2 nearest neighbors for each city, and their respective distances. Provide the solution in the following format:\n\n1. Route: List the nodes in the order they are visited.\n2. Objective: The objective value (total travel distance).",
-        "output": "Route: [0, 30, 20, 28, 23, 29, 40, 35, 41, 37, 39, 42, 47, 43, 36, 46, 38, 45, 44, 32, 19, 24, 31, 25, 15, 12, 9, 18, 17, 5, 10, 11, 2, 4, 16, 13, 7, 8, 1, 14, 3, 21, 6, 26, 22, 27, 34, 33, 0], Objective: 4371.223",
-        "input": "Node 0, coordinates: [0, 81], neighbors: [30: 78.6, 33: 256.1];Node 1, coordinates: [556, 61], neighbors: [14: 67.5, 8: 96.8];Node 2, coordinates: [906, 45], neighbors: [10: 18.8, 4: 35.0];Node 3, coordinates: [521, 182], neighbors: [21: 38.6, 12: 67.0];Node 4, coordinates: [871, 45], neighbors: [10: 31.9, 2: 35.0];Node 5, coordinates: [819, 172], neighbors: [17: 55.5, 18: 84.5];Node 6, coordinates: [420, 212], neighbors: [26: 48.0, 21: 67.1];Node 7, coordinates: [640, 118], neighbors: [13: 15.1, 16: 30.1];Node 8, coordinates: [616, 137], neighbors: [7: 30.6, 13: 44.3];Node 9, coordinates: [624, 229], neighbors: [12: 50.4, 8: 92.3];Node 10, coordinates: [898, 62], neighbors: [2: 18.8, 4: 31.9];Node 11, coordinates: [1000, 0], neighbors: [2: 104.2, 10: 119.4];Node 12, coordinates: [574, 223], neighbors: [9: 50.4, 3: 67.0];Node 13, coordinates: [655, 116], neighbors: [7: 15.1, 16: 15.2];Node 14, coordinates: [564, 128], neighbors: [8: 52.8, 1: 67.5];Node 15, coordinates: [493, 246], neighbors: [25: 5.8, 21: 57.9];Node 16, coordinates: [669, 110], neighbors: [13: 15.2, 7: 30.1];Node 17, coordinates: [770, 198], neighbors: [18: 32.2, 5: 55.5];Node 18, coordinates: [754, 226], neighbors: [17: 32.2, 5: 84.5];Node 19, coordinates: [384, 295], neighbors: [24: 22.7, 32: 23.0];Node 20, coordinates: [241, 251], neighbors: [28: 47.4, 27: 67.7];Node 21, coordinates: [483, 189], neighbors: [3: 38.6, 25: 54.2];Node 22, coordinates: [347, 223], neighbors: [26: 26.6, 27: 42.4];Node 23, coordinates: [205, 337], neighbors: [28: 72.8, 20: 93.2];Node 24, coordinates: [399, 312], neighbors: [19: 22.7, 32: 41.2];Node 25, coordinates: [488, 243], neighbors: [15: 5.8, 21: 54.2];Node 26, coordinates: [372, 214], neighbors: [22: 26.6, 6: 48.0];Node 27, coordinates: [305, 229], neighbors: [22: 42.4, 34: 66.5];Node 28, coordinates: [263, 293], neighbors: [20: 47.4, 23: 72.8];Node 29, coordinates: [93, 425], neighbors: [23: 142.4, 28: 215.2];Node 30, coordinates: [58, 134], neighbors: [0: 78.6, 33: 187.1];Node 31, coordinates: [461, 310], neighbors: [24: 62.0, 15: 71.6];Node 32, coordinates: [361, 296], neighbors: [19: 23.0, 24: 41.2];Node 33, coordinates: [243, 162], neighbors: [34: 24.8, 20: 89.0];Node 34, coordinates: [259, 181], neighbors: [33: 24.8, 27: 66.5];Node 35, coordinates: [388, 837], neighbors: [41: 21.9, 37: 49.0];Node 36, coordinates: [619, 815], neighbors: [46: 28.6, 38: 32.4];Node 37, coordinates: [389, 886], neighbors: [41: 44.3, 35: 49.0];Node 38, coordinates: [587, 820], neighbors: [46: 31.8, 36: 32.4];Node 39, coordinates: [454, 885], neighbors: [41: 60.3, 37: 65.0];Node 40, coordinates: [272, 741], neighbors: [35: 150.6, 41: 171.8];Node 41, coordinates: [408, 846], neighbors: [35: 21.9, 37: 44.3];Node 42, coordinates: [600, 994], neighbors: [47: 39.3, 45: 166.9];Node 43, coordinates: [701, 851], neighbors: [36: 89.6, 46: 115.2];Node 44, coordinates: [538, 777], neighbors: [45: 62.0, 38: 65.2];Node 45, coordinates: [538, 839], neighbors: [38: 52.6, 44: 62.0];Node 46, coordinates: [602, 792], neighbors: [36: 28.6, 38: 31.8];Node 47, coordinates: [639, 999], neighbors: [42: 39.3, 43: 160.5].",
+        "num_nodes": "85",
+        "instruction": "Solve the Traveling Salesman Problem (TSP) for the given list of 85 cities. Each city is represented as a node with coordinates (x, y). Identify the shortest route that visits every city exactly once and returns to the starting city. The input includes city coordinates, the 2 nearest neighbors for each city, and their respective distances. Provide the solution in the following format:\n\n1. Route: List the nodes in the order they are visited.\n2. Objective: The objective value (total travel distance).",
+        "output": "Route: [0, 40, 63, 48, 47, 2, 71, 51, 8, 19, 83, 14, 65, 24, 76, 20, 53, 46, 78, 54, 39, 64, 66, 15, 36, 27, 34, 42, 82, 68, 35, 62, 11, 33, 3, 56, 22, 50, 6, 10, 80, 77, 12, 75, 49, 60, 45, 17, 1, 31, 69, 7, 41, 13, 59, 61, 44, 81, 79, 9, 55, 4, 16, 5, 26, 52, 57, 38, 32, 43, 29, 74, 21, 67, 28, 73, 23, 72, 37, 25, 18, 30, 70, 58, 84, 0], Objective: 7563.760",
+        "input": "Node 0, coordinates: [689, 791], neighbors: [84: 50.4, 40: 52.0];Node 1, coordinates: [282, 288], neighbors: [17: 28.7, 60: 85.3];Node 2, coordinates: [864, 614], neighbors: [8: 61.8, 71: 65.5];Node 3, coordinates: [234, 524], neighbors: [56: 36.4, 22: 50.7];Node 4, coordinates: [685, 218], neighbors: [72: 93.1, 55: 98.5];Node 5, coordinates: [654, 42], neighbors: [16: 74.0, 79: 174.0];Node 6, coordinates: [303, 673], neighbors: [50: 21.8, 10: 106.0];Node 7, coordinates: [149, 222], neighbors: [61: 54.6, 31: 71.2];Node 8, coordinates: [879, 674], neighbors: [2: 61.8, 71: 93.6];Node 9, coordinates: [498, 210], neighbors: [81: 84.5, 55: 95.8];Node 10, coordinates: [341, 574], neighbors: [80: 36.1, 77: 100.0];Node 11, coordinates: [155, 481], neighbors: [33: 18.1, 3: 89.9];Node 12, coordinates: [408, 476], neighbors: [75: 74.4, 77: 81.0];Node 13, coordinates: [105, 106], neighbors: [59: 14.1, 41: 112.0];Node 14, coordinates: [964, 979], neighbors: [83: 66.2, 65: 86.8];Node 15, coordinates: [426, 788], neighbors: [36: 88.5, 66: 96.8];Node 16, coordinates: [655, 116], neighbors: [5: 74.0, 4: 106.3];Node 17, coordinates: [296, 313], neighbors: [1: 28.7, 45: 65.9];Node 18, coordinates: [595, 579], neighbors: [30: 66.9, 25: 125.7];Node 19, coordinates: [923, 790], neighbors: [20: 121.2, 8: 124.1];Node 20, coordinates: [856, 891], neighbors: [24: 69.5, 65: 70.2];Node 21, coordinates: [801, 332], neighbors: [67: 39.6, 74: 81.4];Node 22, coordinates: [215, 571], neighbors: [56: 16.0, 3: 50.7];Node 23, coordinates: [689, 386], neighbors: [73: 51.0, 28: 52.4];Node 24, coordinates: [848, 960], neighbors: [65: 32.1, 76: 37.7];Node 25, coordinates: [569, 456], neighbors: [37: 70.9, 75: 103.8];Node 26, coordinates: [842, 24], neighbors: [52: 70.7, 57: 80.0];Node 27, coordinates: [129, 845], neighbors: [34: 61.4, 68: 164.6];Node 28, coordinates: [732, 416], neighbors: [73: 49.7, 23: 52.4];Node 29, coordinates: [888, 351], neighbors: [74: 52.0, 21: 89.1];Node 30, coordinates: [633, 634], neighbors: [18: 66.9, 63: 87.5];Node 31, coordinates: [184, 284], neighbors: [69: 48.8, 7: 71.2];Node 32, coordinates: [916, 183], neighbors: [57: 111.4, 38: 134.8];Node 33, coordinates: [173, 479], neighbors: [11: 18.1, 3: 75.8];Node 34, coordinates: [92, 894], neighbors: [27: 61.4, 42: 112.0];Node 35, coordinates: [100, 616], neighbors: [62: 30.6, 68: 66.3];Node 36, coordinates: [339, 804], neighbors: [66: 87.9, 15: 88.5];Node 37, coordinates: [589, 388], neighbors: [25: 70.9, 23: 100.0];Node 38, coordinates: [983, 66], neighbors: [57: 77.2, 52: 88.0];Node 39, coordinates: [577, 989], neighbors: [64: 58.3, 54: 76.4];Node 40, coordinates: [690, 739], neighbors: [63: 37.1, 0: 52.0];Node 41, coordinates: [32, 21], neighbors: [13: 112.0, 59: 126.2];Node 42, coordinates: [36, 991], neighbors: [34: 112.0, 27: 173.1];Node 43, coordinates: [979, 334], neighbors: [29: 92.6, 74: 136.0];Node 44, coordinates: [290, 145], neighbors: [61: 106.2, 81: 133.5];Node 45, coordinates: [329, 370], neighbors: [17: 65.9, 1: 94.5];Node 46, coordinates: [748, 866], neighbors: [53: 47.8, 78: 51.9];Node 47, coordinates: [746, 646], neighbors: [63: 80.6, 48: 93.9];Node 48, coordinates: [765, 738], neighbors: [40: 75.0, 63: 85.0];Node 49, coordinates: [475, 335], neighbors: [75: 97.3, 60: 125.4];Node 50, coordinates: [282, 679], neighbors: [6: 21.8, 10: 120.4];Node 51, coordinates: [959, 581], neighbors: [71: 35.1, 2: 100.6];Node 52, coordinates: [912, 14], neighbors: [57: 58.3, 26: 70.7];Node 53, coordinates: [794, 853], neighbors: [46: 47.8, 20: 72.7];Node 54, coordinates: [630, 934], neighbors: [39: 76.4, 78: 84.5];Node 55, coordinates: [589, 240], neighbors: [9: 95.8, 4: 98.5];Node 56, coordinates: [215, 555], neighbors: [22: 16.0, 3: 36.4];Node 57, coordinates: [906, 72], neighbors: [52: 58.3, 38: 77.2];Node 58, coordinates: [604, 769], neighbors: [0: 87.8, 40: 91.1];Node 59, coordinates: [115, 116], neighbors: [13: 14.1, 7: 111.3];Node 60, coordinates: [366, 273], neighbors: [17: 80.6, 1: 85.3];Node 61, coordinates: [198, 198], neighbors: [7: 54.6, 31: 87.1];Node 62, coordinates: [130, 610], neighbors: [35: 30.6, 68: 75.9];Node 63, coordinates: [688, 702], neighbors: [40: 37.1, 47: 80.6];Node 64, coordinates: [532, 952], neighbors: [39: 58.3, 54: 99.6];Node 65, coordinates: [880, 957], neighbors: [24: 32.1, 76: 69.1];Node 66, coordinates: [388, 877], neighbors: [36: 87.9, 15: 96.8];Node 67, coordinates: [762, 339], neighbors: [21: 39.6, 28: 82.6];Node 68, coordinates: [106, 682], neighbors: [35: 66.3, 82: 70.2];Node 69, coordinates: [136, 293], neighbors: [31: 48.8, 7: 72.2];Node 70, coordinates: [500, 679], neighbors: [15: 131.7, 58: 137.5];Node 71, coordinates: [926, 593], neighbors: [51: 35.1, 2: 65.5];Node 72, coordinates: [671, 310], neighbors: [23: 78.1, 4: 93.1];Node 73, coordinates: [687, 437], neighbors: [28: 49.7, 23: 51.0];Node 74, coordinates: [856, 392], neighbors: [29: 52.0, 21: 81.4];Node 75, coordinates: [468, 432], neighbors: [12: 74.4, 49: 97.3];Node 76, coordinates: [811, 953], neighbors: [24: 37.7, 65: 69.1];Node 77, coordinates: [327, 475], neighbors: [12: 81.0, 80: 85.5];Node 78, coordinates: [705, 895], neighbors: [46: 51.9, 84: 58.3];Node 79, coordinates: [493, 108], neighbors: [9: 102.1, 81: 108.9];Node 80, coordinates: [368, 550], neighbors: [10: 36.1, 12: 84.1];Node 81, coordinates: [417, 186], neighbors: [9: 84.5, 60: 100.8];Node 82, coordinates: [36, 687], neighbors: [68: 70.2, 35: 95.6];Node 83, coordinates: [992, 919], neighbors: [14: 66.2, 65: 118.3];Node 84, coordinates: [683, 841], neighbors: [0: 50.4, 78: 58.3].",
         "instance": [
             [
-                0,
-                81
+                689,
+                791
             ],
             [
-                556,
-                61
+                282,
+                288
             ],
             [
-                906,
-                45
+                864,
+                614
             ],
             [
-                521,
-                182
+                234,
+                524
             ],
             [
-                871,
-                45
+                685,
+                218
             ],
             [
-                819,
-                172
+                654,
+                42
             ],
             [
-                420,
-                212
+                303,
+                673
             ],
             [
-                640,
-                118
+                149,
+                222
             ],
             [
-                616,
-                137
+                879,
+                674
             ],
             [
-                624,
-                229
+                498,
+                210
             ],
             [
-                898,
-                62
+                341,
+                574
             ],
             [
-                1000,
-                0
+                155,
+                481
             ],
             [
-                574,
-                223
+                408,
+                476
+            ],
+            [
+                105,
+                106
+            ],
+            [
+                964,
+                979
+            ],
+            [
+                426,
+                788
             ],
             [
                 655,
                 116
             ],
             [
-                564,
-                128
+                296,
+                313
             ],
             [
-                493,
-                246
+                595,
+                579
             ],
             [
-                669,
-                110
+                923,
+                790
             ],
             [
-                770,
+                856,
+                891
+            ],
+            [
+                801,
+                332
+            ],
+            [
+                215,
+                571
+            ],
+            [
+                689,
+                386
+            ],
+            [
+                848,
+                960
+            ],
+            [
+                569,
+                456
+            ],
+            [
+                842,
+                24
+            ],
+            [
+                129,
+                845
+            ],
+            [
+                732,
+                416
+            ],
+            [
+                888,
+                351
+            ],
+            [
+                633,
+                634
+            ],
+            [
+                184,
+                284
+            ],
+            [
+                916,
+                183
+            ],
+            [
+                173,
+                479
+            ],
+            [
+                92,
+                894
+            ],
+            [
+                100,
+                616
+            ],
+            [
+                339,
+                804
+            ],
+            [
+                589,
+                388
+            ],
+            [
+                983,
+                66
+            ],
+            [
+                577,
+                989
+            ],
+            [
+                690,
+                739
+            ],
+            [
+                32,
+                21
+            ],
+            [
+                36,
+                991
+            ],
+            [
+                979,
+                334
+            ],
+            [
+                290,
+                145
+            ],
+            [
+                329,
+                370
+            ],
+            [
+                748,
+                866
+            ],
+            [
+                746,
+                646
+            ],
+            [
+                765,
+                738
+            ],
+            [
+                475,
+                335
+            ],
+            [
+                282,
+                679
+            ],
+            [
+                959,
+                581
+            ],
+            [
+                912,
+                14
+            ],
+            [
+                794,
+                853
+            ],
+            [
+                630,
+                934
+            ],
+            [
+                589,
+                240
+            ],
+            [
+                215,
+                555
+            ],
+            [
+                906,
+                72
+            ],
+            [
+                604,
+                769
+            ],
+            [
+                115,
+                116
+            ],
+            [
+                366,
+                273
+            ],
+            [
+                198,
                 198
             ],
             [
-                754,
-                226
+                130,
+                610
             ],
             [
-                384,
-                295
+                688,
+                702
             ],
             [
-                241,
-                251
+                532,
+                952
             ],
             [
-                483,
-                189
-            ],
-            [
-                347,
-                223
-            ],
-            [
-                205,
-                337
-            ],
-            [
-                399,
-                312
-            ],
-            [
-                488,
-                243
-            ],
-            [
-                372,
-                214
-            ],
-            [
-                305,
-                229
-            ],
-            [
-                263,
-                293
-            ],
-            [
-                93,
-                425
-            ],
-            [
-                58,
-                134
-            ],
-            [
-                461,
-                310
-            ],
-            [
-                361,
-                296
-            ],
-            [
-                243,
-                162
-            ],
-            [
-                259,
-                181
+                880,
+                957
             ],
             [
                 388,
-                837
+                877
             ],
             [
-                619,
-                815
+                762,
+                339
             ],
             [
-                389,
-                886
+                106,
+                682
             ],
             [
-                587,
-                820
+                136,
+                293
             ],
             [
-                454,
-                885
+                500,
+                679
             ],
             [
-                272,
-                741
+                926,
+                593
             ],
             [
-                408,
-                846
+                671,
+                310
             ],
             [
-                600,
-                994
+                687,
+                437
             ],
             [
-                701,
-                851
+                856,
+                392
             ],
             [
-                538,
-                777
+                468,
+                432
             ],
             [
-                538,
-                839
+                811,
+                953
             ],
             [
-                602,
-                792
+                327,
+                475
             ],
             [
-                639,
-                999
+                705,
+                895
+            ],
+            [
+                493,
+                108
+            ],
+            [
+                368,
+                550
+            ],
+            [
+                417,
+                186
+            ],
+            [
+                36,
+                687
+            ],
+            [
+                992,
+                919
+            ],
+            [
+                683,
+                841
             ]
         ]
     }
