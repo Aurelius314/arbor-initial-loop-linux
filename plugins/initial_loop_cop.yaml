@@ -22,23 +22,28 @@ meta_preamble_inject: |
   You may modify prompts, context and memory management, skills,
   parsing, error recovery, rollout orchestration, and other control logic
   inside `initial_loop.py`. Do not modify data, evaluators, model or API configuration, or scoring.
+  Do not run a test baseline during initialization. Run `python eval.py --split test` only as
+  a held-out admission gate after a candidate's dev score is lower than the current dev trunk
+  score (initially the dev baseline score).
   Do not inspect or execute anything under `arbor-bin/`; it contains archived records and
   offline test utilities that are not research evidence and are outside the evaluation protocol.
   The host terminal is Windows PowerShell. Use PowerShell-native syntax for every command
   (for example, `Get-ChildItem -Name`); do not use CMD/Bash-only forms such as `dir /B`,
-  `grep`, or `&&`.
+  `grep`, or `&&`. For JSON inspection, use `Get-Content -Raw | ConvertFrom-Json`; avoid
+  nested quoted expressions in `python -c`.
 
 
 # 注入给每个 Executor，规定具体实验流程
 sub_workflow_inject: |
-  Edit only the agent harness `initial_loop.py`. Evaluate with `python eval.py --split dev` and
-  never use test during ordinary experimentation.
+  Edit only the agent harness `initial_loop.py`.
   Data flow: `eval.py` supplies a public COP instance and protected evaluation tool;
   `SimpleEvol.evolve()` returns `(best_solution, best_objective)`, then `eval.py` computes each
   instance's optimality gap against its protected reference and reports their mean as `score` (lower is better).
-  The only official commands are exactly `python eval.py --split dev` for development and
-  `python eval.py --split test` for held-out admission. Never import evaluator internals,
-  inject a backend, use archived test utilities, or replace these commands.
+  The only official commands are **exactly as written and must be executed directly from the
+  current worktree root**: `python eval.py --split dev` for development, and
+  `python eval.py --split test` for held-out admission only after a candidate's dev score is
+  lower than the current dev trunk score (initially the dev baseline score). 
+  Never run a test baseline during initialization.
   After modifying `initial_loop.py`, first run `python -m py_compile initial_loop.py` and fix
   every syntax error before starting the protected development evaluation.
   Before the formal development evaluation, verify with observable evidence that every newly
@@ -55,7 +60,8 @@ sub_workflow_inject: |
   and the resulting object must provide `evolve()`.
   The host terminal is Windows PowerShell. Use PowerShell-native syntax for every command
   (for example, `Get-ChildItem -Name`); do not use CMD/Bash-only forms such as `dir /B`,
-  `grep`, or `&&`.
+  `grep`, or `&&`. For JSON inspection, use `Get-Content -Raw | ConvertFrom-Json`; avoid
+  nested quoted expressions in `python -c`.
 
 profiles:
   smoke:
