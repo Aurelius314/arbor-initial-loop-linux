@@ -32,6 +32,8 @@ meta_preamble_inject: |
 sub_workflow_inject: |
   Edit only the agent harness `initial_loop.py`. Evaluate with `python eval.py --split dev` and
   never use test during ordinary experimentation.
+  After modifying `initial_loop.py`, first run `python -m py_compile initial_loop.py` and fix
+  every syntax error before starting the protected development evaluation.
   After every candidate implementation, you must run the protected development evaluator
   `python eval.py --split dev`; its reported `score:` is the only official candidate result.
   Local unit checks or `python -c` commands may assist debugging but must never replace the
