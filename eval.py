@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from typing import Any, Callable
 from datetime import datetime
 
-from evaluation.model_client import call_openai_compatible
+from evaluation.model_client import TransientAPIError, call_openai_compatible
 from evaluation.problems import get_problem
 from evaluation.protocol import CallBudget, gap_percent, reference_objective
 from initial_loop import SimpleEvol
@@ -97,16 +97,23 @@ def evaluate_problem(
         try:
             _solution, objective = solver.evolve()
             failure = None if objective is not None else "error: no feasible solution produced"
+        except TransientAPIError as exc:
+            objective = None
+            failure = f"infrastructure_error: {exc}"
         except Exception as exc:
             objective = None
             failure = f"error: {type(exc).__name__}: {exc}"
-        gap = invalid_gap if objective is None else gap_percent(
-            objective, reference_objective(instance), problem.OBJ_TYPE
+        gap = None if failure and failure.startswith("infrastructure_error:") else (
+            invalid_gap if objective is None else gap_percent(
+                objective, reference_objective(instance), problem.OBJ_TYPE
+            )
         )
         rows.append({
             "problem": problem_name, "instance": index, "objective": objective,
             "gap": gap, "calls": client.call.calls, "status": failure or "ok",
         })
+    if any(row["gap"] is None for row in rows):
+        return None, rows
     return sum(row["gap"] for row in rows) / len(rows), rows
 
 
@@ -132,6 +139,8 @@ def evaluate_split(split: str, backend: Callable[..., str], invalid_gap: float =
         all_rows.extend(rows)
     if not problem_scores:
         raise ValueError(f"no data/<problem>/{split}.json datasets found")
+    if any(score is None for score in problem_scores):
+        return None, all_rows
     return sum(problem_scores) / len(problem_scores), all_rows
 
 
@@ -143,9 +152,13 @@ def main() -> None:
     args = parser.parse_args()
     score, rows = evaluate_split(args.split, call_openai_compatible if args.backend == "api" else mock_backend, args.invalid_gap)
     for row in rows:
-        print(f"problem={row['problem']} instance={row['instance']} gap={row['gap']:.6f} calls={row['calls']} status={row['status']}")
+        gap = "invalid" if row["gap"] is None else f"{row['gap']:.6f}"
+        print(f"problem={row['problem']} instance={row['instance']} gap={gap} calls={row['calls']} status={row['status']}")
     print(f"split: {args.split}")
     print(f"instances: {len(rows)}")
+    if score is None:
+        print("evaluation_invalid: transient API/network failure; rerun required")
+        raise SystemExit(2)
     print(f"mean_optimality_gap: {score:.6f}")
     print(f"score: {score:.6f}")
 

@@ -76,3 +76,16 @@ def test_one_instance_failure_does_not_poison_the_next():
     _score, rows = module.evaluate_problem("tsp", instances, backend)
     assert rows[0]["status"].startswith("error:")
     assert rows[1]["status"] == "ok"
+
+
+def test_transient_api_failure_invalidates_evaluation_instead_of_scoring_100():
+    module = load_eval()
+    instances = json.loads((ROOT / "data/tsp/dev.json").read_text(encoding="utf-8"))[:1]
+
+    def backend(**_kwargs):
+        raise module.TransientAPIError("connection closed")
+
+    score, rows = module.evaluate_problem("tsp", instances, backend)
+    assert score is None
+    assert rows[0]["gap"] is None
+    assert rows[0]["status"].startswith("infrastructure_error:")
