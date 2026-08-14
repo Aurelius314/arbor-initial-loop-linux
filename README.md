@@ -20,10 +20,10 @@ optimality gap; lower is better.
 
 ## Smoke test
 
-The mock backend checks the full protocol without an API call:
+The test-only mock backend checks the full protocol without an API call:
 
 ```powershell
-python eval.py --split dev --backend mock
+python tests/mock_eval_cli.py
 python -m pytest -q
 ```
 
@@ -34,7 +34,7 @@ model used by Arbor:
 
 ```powershell
 $env:OPENROUTER_API_KEY = "..."
-$env:TSP_SOLVER_MODEL = "deepseek/deepseek-chat"
+$env:COP_SOLVER_MODEL = "deepseek/deepseek-chat"
 python eval.py --split dev
 arbor run "Evolve initial_loop.py to minimize mean TSP optimality gap; use dev for evolution and test only for held-out evaluation" --yes --yes-cwd .
 ```

@@ -36,7 +36,7 @@ def test_eval_command_runs_from_a_path_with_spaces(local_tmp: Path):
     """The protected command must not depend on Bash path parsing."""
     spaced = local_tmp / "project with spaces"
     spaced.mkdir()
-    command = [sys.executable, str(PROJECT / "eval.py"), "--split", "dev", "--backend", "mock"]
+    command = [sys.executable, str(PROJECT / "tests" / "mock_eval_cli.py")]
     result = run(command, spaced)
     assert result.returncode == 0, result.stderr
     assert "score:" in result.stdout

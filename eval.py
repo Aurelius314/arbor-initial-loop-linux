@@ -20,15 +20,6 @@ from initial_loop import SimpleEvol
 ROOT = Path(__file__).resolve().parent
 
 
-def mock_backend(*, messages: list[dict[str, str]], **_: Any) -> str:
-    """Deterministic valid-route backend for an API-free smoke test."""
-    text = "\n".join(message["content"] for message in messages)
-    import re
-    indices = [int(x) for x in re.findall(r"(?:Node\s+|^)(\d+)(?=[,:])", text, re.MULTILINE)]
-    n = max(indices) + 1 if indices else 0
-    return f"Route: [{', '.join(map(str, range(n)))}]\n<description>index order</description>"
-
-
 class _Message:
     def __init__(self, content: str):
         self.content = content
@@ -155,10 +146,9 @@ def evaluate_split(split: str, backend: Callable[..., str], invalid_gap: float =
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--split", choices=("dev", "test"), default="dev")
-    parser.add_argument("--backend", choices=("api", "mock"), default="api")
     parser.add_argument("--invalid-gap", type=float, default=100.0)
     args = parser.parse_args()
-    score, rows = evaluate_split(args.split, call_openai_compatible if args.backend == "api" else mock_backend, args.invalid_gap)
+    score, rows = evaluate_split(args.split, call_openai_compatible, args.invalid_gap)
     for row in rows:
         gap = "invalid" if row["gap"] is None else f"{row['gap']:.6f}"
         print(f"problem={row['problem']} instance={row['instance']} gap={gap} calls={row['calls']} status={row['status']}")

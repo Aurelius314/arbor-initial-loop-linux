@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+from mock_backend import mock_backend
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,7 +23,7 @@ def load_eval():
 def test_mock_dev_evaluation_is_finite_and_valid():
     module = load_eval()
     instances = json.loads((ROOT / "data/tsp/dev.json").read_text(encoding="utf-8"))
-    score, rows = module.evaluate_problem("tsp", instances, module.mock_backend)
+    score, rows = module.evaluate_problem("tsp", instances, mock_backend)
     assert len(rows) == 2
     assert all(row["status"] == "ok" for row in rows)
     assert all(row["calls"] == 6 for row in rows)
@@ -71,7 +73,7 @@ def test_one_instance_failure_does_not_poison_the_next():
         calls += 1
         if calls <= 14:
             return "invalid"
-        return module.mock_backend(messages=messages, **kwargs)
+        return mock_backend(messages=messages, **kwargs)
 
     _score, rows = module.evaluate_problem("tsp", instances, backend)
     assert rows[0]["status"].startswith("error:")
@@ -89,3 +91,9 @@ def test_transient_api_failure_invalidates_evaluation_instead_of_scoring_100():
     assert score is None
     assert rows[0]["gap"] is None
     assert rows[0]["status"].startswith("infrastructure_error:")
+
+
+def test_public_evaluator_has_no_mock_backend_switch():
+    source = (ROOT / "eval.py").read_text(encoding="utf-8")
+    assert "--backend" not in source
+    assert "mock_backend" not in source
