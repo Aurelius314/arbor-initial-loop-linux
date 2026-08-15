@@ -1,5 +1,4 @@
 ﻿"""Protected Arbor evaluator: mean COP optimality gap (lower is better)."""
-# 评测入口，运行 initial_loop.py 的求解器，输出mean gap
 
 from __future__ import annotations
 
@@ -19,6 +18,7 @@ from evaluation.model_client import (
     TransientAPIError,
     call_openai_compatible,
 )
+from evaluation.trace import DevTraceCollector, render_digest
 from evaluation.problems import get_problem
 from evaluation.protocol import CallBudget, gap_percent, reference_objective
 from initial_loop import SimpleEvol
@@ -87,10 +87,17 @@ def evaluate_problem(
     call_limit = solver_cfg.max_generation_attempts + compression_calls + 1
     for index, instance in enumerate(instances):
         instance_records = records_dir / f"instance_{index:03d}" if records_dir else None
+        trace = DevTraceCollector(
+            instance_records / "trajectory.jsonl",
+            problem=problem_name,
+            instance=index,
+        ) if instance_records else None
         total_calls = 0
         objective = None
         failure = None
         for instance_attempt in range(1, instance_attempts + 1):
+            if trace:
+                trace.emit("evaluator_attempt", attempt=instance_attempt)
             # Each retry receives a fresh client and call budget so a network
             # outage cannot consume the next attempt's generation budget.
             client = _Client(backend, limit=call_limit)
@@ -105,12 +112,21 @@ def evaluate_problem(
                 exp_records_dir=instance_records,
                 record_instance_index=index,
             )
+            if trace:
+                solver.trace_sink = trace.emit
             try:
                 _solution, objective = solver.evolve()
                 failure = None if objective is not None else "error: no feasible solution produced"
             except InfrastructureAPIError as exc:
                 objective = None
                 failure = f"infrastructure_error: {exc}"
+                if trace:
+                    trace.emit(
+                        "evaluator_attempt_failed",
+                        attempt=instance_attempt,
+                        category="infrastructure",
+                        error=str(exc),
+                    )
                 if instance_attempt < instance_attempts:
                     logging.getLogger(__name__).warning(
                         "Network failure on %s instance %d; restarting instance attempt %d/%d",
@@ -120,6 +136,13 @@ def evaluate_problem(
             except Exception as exc:
                 objective = None
                 failure = f"error: {type(exc).__name__}: {exc}"
+                if trace:
+                    trace.emit(
+                        "evaluator_attempt_failed",
+                        attempt=instance_attempt,
+                        category="candidate_or_code",
+                        error=f"{type(exc).__name__}: {exc}",
+                    )
             finally:
                 total_calls += client.call.calls
             if not failure or not failure.startswith("infrastructure_error:"):
@@ -129,10 +152,21 @@ def evaluate_problem(
                 objective, reference_objective(instance), problem.OBJ_TYPE
             )
         )
-        rows.append({
+        if trace:
+            trace.emit(
+                "evaluator_result",
+                objective=objective,
+                optimality_gap=gap,
+                calls=total_calls,
+                status=failure or "ok",
+            )
+        row = {
             "problem": problem_name, "instance": index, "objective": objective,
             "gap": gap, "calls": total_calls, "status": failure or "ok",
-        })
+        }
+        if trace:
+            row["_trajectory_digest"] = trace.digest()
+        rows.append(row)
     if any(row["gap"] is None for row in rows):
         return None, rows
     return sum(row["gap"] for row in rows) / len(rows), rows
@@ -201,6 +235,9 @@ def main() -> None:
     for row in rows:
         gap = "invalid" if row["gap"] is None else f"{row['gap']:.6f}"
         print(f"problem={row['problem']} instance={row['instance']} gap={gap} calls={row['calls']} status={row['status']}")
+    digests = [row["_trajectory_digest"] for row in rows if row.get("_trajectory_digest")]
+    if args.split == "dev" and digests:
+        print(render_digest(digests))
     print(f"split: {args.split}")
     print(f"instances: {len(rows)}")
     if score is None:
