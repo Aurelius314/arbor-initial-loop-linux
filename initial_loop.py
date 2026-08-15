@@ -22,6 +22,9 @@ class SimpleEvol:
     ):
         self.cfg = cfg
         self.client = client
+        # The protected evaluator may attach a callable after construction.
+        # Trace failures must never affect solving or scoring.
+        self.trace_sink = None
 
         # ========= Generic config =========
         self.problem_name = problem_name
@@ -65,6 +68,15 @@ class SimpleEvol:
         self.eval_tool = eval_tool
         self.messages = self._build_initial_messages()
         self.experiment_results = []
+
+    def _emit_trace(self, event: str, **payload) -> None:
+        sink = getattr(self, "trace_sink", None)
+        if not callable(sink):
+            return
+        try:
+            sink(event, payload)
+        except Exception as exc:
+            logger.warning("Trajectory trace emission failed: %s", exc)
 
     # -------------------------------------------------------------------------
     # Prompt / message construction
@@ -135,6 +147,7 @@ class SimpleEvol:
         1. A single candidate solution formatted as above requirement.
 
         2. After generating the solution, write a concise description after the solution (you should wrap it using <description> ... </description>).
+        The description must NOT include any previous solution or solution fragment.
         """.strip()
 
         system_prompt = f"{system_generator_prompt}\n\n{format_suffix}"
@@ -149,7 +162,6 @@ class SimpleEvol:
             },
         ]
 
-    # 响应中没有 Route: [...]
     def _build_retry_message_for_bad_format(self):
         return {
             "role": "user",
@@ -218,6 +230,13 @@ class SimpleEvol:
         summary_message = self._call_llm_once(summary_messages)
         summary_content = summary_message.content or ""
 
+        self._emit_trace(
+            "context_summary",
+            experiment=self.experiment_count,
+            summary=summary_content,
+            messages_before=len(self.messages),
+        )
+
         logger.info("[Intermediate Summary]")
         logger.info("-" * 40)
         logger.info(summary_content)
@@ -262,15 +281,6 @@ class SimpleEvol:
         return match.group(1).strip() if match else ""
 
     def _extract_solution_and_description(self, text: str):
-        """
-        Given a full decoded text which contains:
-        ### Instruction (Problem): ...
-        ### Input (Instance Data): ...
-        ### Response (Proposed Solution): ...
-        Return only the substring after '### Response (Proposed Solution):'
-        so that we can parse route, objective, etc., from that substring.
-        """
-
         match = re.search(r"Route\s*:\s*\[([^\]]*)\]", text, flags=re.IGNORECASE)
         if not match:
             return None, ""
@@ -360,6 +370,11 @@ class SimpleEvol:
         self.messages.append(final_user_msg)
 
         final_message = self._call_llm_once(self.messages)
+        self._emit_trace(
+            "final_summary",
+            experiment=self.experiment_count,
+            summary=final_message.content or "",
+        )
         self.messages.append(
             {
                 "role": "assistant",
@@ -407,6 +422,15 @@ class SimpleEvol:
         return best_solutions, best_objectives
 
     def _evolve_current_instance(self):
+        self._emit_trace(
+            "trajectory_start",
+            problem=self.problem_name,
+            problem_size=self.problem_size,
+            max_experiments=self.max_experiments,
+            max_generation_attempts=self.max_generation_attempts,
+            compress_every=self.compress_every,
+            objective_type=self.obj_type,
+        )
         logger.info("=" * 70)
         logger.info("SimpleEvol started.")
         logger.info(f"Problem: {self.problem_name}")
@@ -441,8 +465,19 @@ class SimpleEvol:
             assistant_content = assistant_message.content or ""
 
             solution, description = self._extract_solution_and_description(assistant_content)
+            self._emit_trace(
+                "generation_attempt",
+                attempt=generation_attempts,
+                experiment=self.experiment_count + 1 if solution is not None else None,
+                parsed=solution is not None,
+                description=description,
+            )
             if solution is None:
                 logger.warning("No valid solution extracted from model response.")
+                self._emit_trace(
+                    "invalid_format",
+                    attempt=generation_attempts,
+                )
                 self.messages.append(self._build_retry_message_for_bad_format())
                 continue
 
@@ -491,10 +526,20 @@ class SimpleEvol:
                 "error": error_msg,
             }
             self.experiment_results.append(record)
+            self._emit_trace(
+                "experiment_result",
+                experiment=self.experiment_count,
+                feasible=feasible,
+                objective=candidate_obj,
+                optimal_objective=optimal_obj,
+                optimality_gap=optimality_gap,
+                error=error_msg,
+                description=description,
+                execution_seconds=exec_time,
+            )
             record_path = self._save_experiment_record(record)
             logger.info(f"Experiment record saved: {record_path}")
 
-            # 加入evaluate结果
             self.messages.append(
                 {
                     "role": "user",
@@ -587,5 +632,15 @@ class SimpleEvol:
 
         best_solution = best_result["solution"] if best_result is not None else []
         best_objective = best_result["obj"] if best_result is not None else None
+
+        self._emit_trace(
+            "trajectory_complete",
+            generation_attempts=generation_attempts,
+            experiments=self.experiment_count,
+            feasible_experiments=feasible_count,
+            best_experiment=best_result["experiment"] if best_result else None,
+            best_objective=best_objective,
+            best_optimality_gap=best_optimality_gap,
+        )
 
         return best_solution, best_objective
