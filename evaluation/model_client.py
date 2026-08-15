@@ -17,8 +17,16 @@ from typing import Any
 LOGGER = logging.getLogger(__name__)
 
 
-class TransientAPIError(RuntimeError):
+class InfrastructureAPIError(RuntimeError):
+    """Raised when provider infrastructure or authentication invalidates an eval."""
+
+
+class TransientAPIError(InfrastructureAPIError):
     """Raised when a temporary provider/network failure exhausts retries."""
+
+
+class AuthenticationAPIError(InfrastructureAPIError):
+    """Raised for rejected credentials; never treat it as a candidate failure."""
 
 
 def call_openai_compatible(*, messages: list[dict[str, str]], **_: Any) -> str:
@@ -43,6 +51,10 @@ def call_openai_compatible(*, messages: list[dict[str, str]], **_: Any) -> str:
                 body = json.loads(response.read().decode())
             return body["choices"][0]["message"]["content"]
         except HTTPError as exc:
+            if exc.code in {401, 403}:
+                raise AuthenticationAPIError(
+                    f"solver API authentication failed with HTTP {exc.code}"
+                ) from exc
             if exc.code not in {408, 409, 425, 429} and not 500 <= exc.code < 600:
                 raise
             error = exc
