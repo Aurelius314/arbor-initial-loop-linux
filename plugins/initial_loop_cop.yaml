@@ -4,8 +4,8 @@ description: "Evolve initial_loop.py to minimize mean optimality gap across COP 
 
 eval_contract:
   metric_direction: minimize
-  eval_cmd: 'python "{cwd}/eval.py" --split dev'
-  eval_cmd_test: 'python "{cwd}/eval.py" --split test'
+  eval_cmd: 'python eval.py --split dev'
+  eval_cmd_test: 'python eval.py --split test'
   eval_timeout: 14400
   dataset_info: "Each data/<problem>/ directory contains dev.json and test.json"
 

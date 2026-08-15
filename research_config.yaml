@@ -2,16 +2,23 @@ plugin: initial_loop_cop
 plugin_profile: paper
 
 coordinator:
-  merge_threshold: 0.0
+  max_cycles: 20
+  max_turns: 500
+  executor_max_turns: 50
+  executor_timeout: 172800
+  merge_threshold: 5.0
   eval_retries: 1
   enforce_protected: true
 
-# OpenRouter's openai-chat path does not expose Arbor's explicit prompt cache.
-# Compact earlier instead of repeatedly sending an ever-growing full history.
 context:
-  window: 64000
-  compact_threshold: 0.60
-  compact_keep_recent: 8
+  window: 200000
+  compact_threshold: 0.80
+  compact_keep_recent: 20
+
+convergence:
+  window_size: 5
+  warn_after: 3
+  stop_after: 8
 
 ui:
   interaction_mode: auto

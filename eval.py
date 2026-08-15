@@ -1,4 +1,4 @@
-"""Protected Arbor evaluator: mean COP optimality gap (lower is better)."""
+﻿"""Protected Arbor evaluator: mean COP optimality gap (lower is better)."""
 # 评测入口，运行 initial_loop.py 的求解器，输出mean gap
 
 from __future__ import annotations
@@ -14,7 +14,11 @@ from types import SimpleNamespace
 from typing import Any, Callable
 from datetime import datetime
 
-from evaluation.model_client import TransientAPIError, call_openai_compatible
+from evaluation.model_client import (
+    InfrastructureAPIError,
+    TransientAPIError,
+    call_openai_compatible,
+)
 from evaluation.problems import get_problem
 from evaluation.protocol import CallBudget, gap_percent, reference_objective
 from initial_loop import SimpleEvol
@@ -104,7 +108,7 @@ def evaluate_problem(
             try:
                 _solution, objective = solver.evolve()
                 failure = None if objective is not None else "error: no feasible solution produced"
-            except TransientAPIError as exc:
+            except InfrastructureAPIError as exc:
                 objective = None
                 failure = f"infrastructure_error: {exc}"
                 if instance_attempt < instance_attempts:
@@ -200,7 +204,7 @@ def main() -> None:
     print(f"split: {args.split}")
     print(f"instances: {len(rows)}")
     if score is None:
-        print("evaluation_invalid: transient API/network failure; rerun required")
+        print("evaluation_invalid: API/network/authentication failure; rerun required")
         raise SystemExit(2)
     print(f"mean_optimality_gap: {score:.6f}")
     print(f"score: {score:.6f}")
