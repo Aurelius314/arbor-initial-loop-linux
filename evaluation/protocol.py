@@ -22,9 +22,13 @@ class CallBudget:
 
 
 def reference_objective(instance: dict[str, Any]) -> float:
-    match = re.search(r"Objective\s*:\s*([-+0-9.eE]+)", str(instance.get("output", "")), re.IGNORECASE)
+    match = re.search(
+        r"(?:Objective|Makespan)\s*:\s*([-+0-9.eE]+)",
+        str(instance.get("output", "")),
+        re.IGNORECASE,
+    )
     if not match:
-        raise ValueError("reference Objective missing")
+        raise ValueError("reference Objective/Makespan missing")
     return float(match.group(1))
 
 
