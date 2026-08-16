@@ -1,13 +1,13 @@
 schema_version: 1
 name: initial_loop_cop
-description: "Evolve initial_loop.py to minimize mean optimality gap across COP problems"
+description: "Jointly evolve one initial_loop.py agent harness over seven Combinatorial Optimization Problems"
 
 eval_contract:
   metric_direction: minimize
   eval_cmd: 'python eval.py --split dev'
   eval_cmd_test: 'python eval.py --split test'
   eval_timeout: 14400
-  dataset_info: "Each data/<problem>/ directory contains dev.json and test.json"
+  dataset_info: "Seven COP (TSP, OP, CVRP, MIS, MVC, PFSP, JSSP); each data/<problem>/ split contains multiple distinct instances"
 
 protected_paths:
   - "data/**"
@@ -16,11 +16,23 @@ protected_paths:
   - "plugins/**"
 
 meta_preamble_inject: |
-  Evolve the agent harness `initial_loop.py` to minimize mean optimality gap across the configured
-  combinatorial optimization problems.
-  You may modify prompts, context and memory management, skills,
-  parsing, error recovery, rollout orchestration, and other control logic
-  inside `initial_loop.py`. Do not modify data, evaluators, model or API configuration, or scoring.
+  Jointly evolve one general COP agent harness, `initial_loop.py`, across seven problem
+  classes: TSP, OP, CVRP, MIS, MVC, PFSP, and JSSP.
+  One official dev evaluation runs the same
+  candidate harness across every distinct dev instance in all seven classes.
+  The authoritative
+  scalar objective is the equal-weight macro-average of the seven problem-level mean optimality
+  gaps; lower is better.
+  Do not optimize only TSP or assume that every solution is a route.
+  Use every reported per-problem gap and problem-level trajectory digest as reasoning evidence.
+  The automatic compact all-instance trajectory index must also be considered, so class-level means
+  do not hide recurring instance-level failures or regressions. Identify which classes improved or
+  regressed, explain material regressions, and propose subsequent
+  hypotheses that improve balanced cross-problem performance rather than hiding one class behind
+  the macro score.
+  You may modify prompts, context and memory management, skills, parsing, error recovery, rollout
+  orchestration, problem-specific dispatch inside the shared harness, and other control logic inside
+  `initial_loop.py`. Do not modify data, evaluators, model or API configuration, or scoring.
   Do not run a test baseline during initialization. Run `python eval.py --split test` only as
   a held-out admission gate after a candidate's dev score is lower than the current dev trunk
   score (initially the dev baseline score).
@@ -33,12 +45,13 @@ meta_preamble_inject: |
 
 sub_workflow_inject: |
   Edit only the agent harness `initial_loop.py`.
-  Data flow: `eval.py` supplies a public COP instance and protected evaluation tool;
-  `SimpleEvol.evolve()` returns `(best_solution, best_objective)`, then `eval.py` computes each
-  instance's optimality gap against its protected reference. It first computes one mean gap for
-  each of exactly seven problems (TSP, OP, CVRP, MIS, MVC, PFSP, JSSP), then reports their
-  equal-weight macro-average, `(TSP + OP + CVRP + MIS + MVC + PFSP + JSSP) / 7`, as `score`
-  (lower is better); instance counts never change a problem's weight.
+  This is joint seven-class harness evolution, not a TSP-only task. The same `initial_loop.py` must
+  support TSP, OP, CVRP, MIS, MVC, PFSP, and JSSP without accessing protected labels. During one
+  official evaluation, `eval.py` runs the candidate harness over every distinct instance in every
+  class: it supplies one public COP instance plus the protected evaluation tool, receives
+  `(best_solution, best_objective)` from `SimpleEvol.evolve()`, and computes that instance's gap.
+  It then computes one mean gap per class and the equal-weight macro score
+  `(TSP + OP + CVRP + MIS + MVC + PFSP + JSSP) / 7`; instance counts never change class weights.
   The only official commands are **exactly as written and must be executed directly from the
   current worktree root**: `python eval.py --split dev` for development, and
   `python eval.py --split test` for held-out admission only after a candidate's dev score is
@@ -51,9 +64,19 @@ sub_workflow_inject: |
   state change, generated artifact, or targeted log entry). If the mechanism is unreachable,
   inactive, or only partially wired, continue fixing it; do not submit an evaluation result or
   conclude that the research hypothesis failed merely because the code compiles or eval exits.
-  Preserve the `_emit_trace`/`trace_sink` observability contract. After formal dev evaluation,
-  use the automatically returned trajectory digest; call `ReadDevTrace` only for the specific
-  failure, summary, timeline, or experiment detail needed to explain the result.
+  Preserve the `_emit_trace`/`trace_sink` observability contract. Development feedback has three
+  complementary levels: (1) every experiment is retained as a structured event, (2) every completed
+  instance has a trajectory digest, and (3) every completed problem class has a digest over all of
+  its distinct instances. After formal dev evaluation, use the automatically returned problem-level
+  digest and its compact `instance_trajectory_index` as the default reasoning evidence. Use
+  `ReadDevTrace(view="problem_digest", problem=...)` for the persisted class summary,
+  `ReadDevTrace(view="instance_digest", problem=..., instance=...)` for one completed instance,
+  and `ReadDevTrace(view="experiment", problem=..., instance=..., experiment=...)` only when a
+  particular experiment needs diagnosis. The trace evidence is diagnostic and never changes score.
+  Your final Executor report must state the macro score and all seven per-problem mean gaps, compare
+  them with the current trunk/baseline when available, and use the class-level digest to explain
+  where the hypothesis helped, failed, or was not activated. Per-problem gaps are diagnostic
+  reasoning evidence; the printed `score:` remains the authoritative scalar merge metric.
   After every candidate implementation, you must run the protected development evaluator
   `python eval.py --split dev`; its reported `score:` is the only official candidate result.
   Local unit checks or `python -c` commands may assist debugging but must never replace the

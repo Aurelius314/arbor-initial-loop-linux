@@ -10,7 +10,13 @@ from __future__ import annotations
 import json
 from collections import Counter
 from pathlib import Path
+from statistics import median
 from typing import Any
+
+
+def _compact_text(value: Any, max_chars: int) -> str:
+    text = " ".join(str(value or "").split())
+    return text if len(text) <= max_chars else text[:max_chars].rstrip() + "...[truncated]"
 
 
 def _json_safe(value: Any, *, max_text: int = 6000) -> Any:
@@ -88,6 +94,198 @@ class DevTraceCollector:
             "best_experiment": best["data"] if best else None,
             "latest_summary": summaries[-1] if summaries else "",
         }
+
+
+def build_problem_digest(
+    problem: str,
+    rows: list[dict[str, Any]],
+    *,
+    invalid_gap: float = 100.0,
+) -> dict[str, Any]:
+    """Aggregate one completed problem batch across its distinct instances."""
+    if not rows:
+        raise ValueError("problem digest requires at least one instance result")
+    if any(row.get("problem") != problem for row in rows):
+        raise ValueError("problem digest rows must belong to exactly one problem")
+    instance_ids = [int(row["instance"]) for row in rows]
+    if len(instance_ids) != len(set(instance_ids)):
+        raise ValueError("problem digest received duplicate instance results")
+
+    trajectories = [
+        row["_trajectory_digest"]
+        for row in rows
+        if isinstance(row.get("_trajectory_digest"), dict)
+    ]
+    final_gaps = [row.get("gap") for row in rows]
+    numeric_final_gaps = [float(gap) for gap in final_gaps if gap is not None]
+    infrastructure_valid = len(numeric_final_gaps) == len(rows)
+    problem_mean_gap = (
+        sum(numeric_final_gaps) / len(numeric_final_gaps)
+        if infrastructure_valid else None
+    )
+    feasible_instances = sum(row.get("objective") is not None for row in rows)
+
+    error_counts: Counter[str] = Counter()
+    for trajectory in trajectories:
+        error_counts.update({
+            str(error): int(count)
+            for error, count in trajectory.get("error_counts", {}).items()
+        })
+
+    max_experiments = max(
+        (len(trajectory.get("gap_curve", [])) for trajectory in trajectories),
+        default=0,
+    )
+    experiment_progress = []
+    for experiment in range(1, max_experiments + 1):
+        best_so_far = []
+        instances_attempted = 0
+        instances_feasible = 0
+        for trajectory in trajectories:
+            curve = trajectory.get("gap_curve", [])
+            if len(curve) >= experiment:
+                instances_attempted += 1
+            valid_prefix = [float(gap) for gap in curve[:experiment] if gap is not None]
+            if valid_prefix:
+                instances_feasible += 1
+                best_so_far.append(min(valid_prefix))
+            else:
+                best_so_far.append(float(invalid_gap))
+        if best_so_far:
+            experiment_progress.append({
+                "experiment": experiment,
+                "instance_coverage": instances_attempted / len(rows),
+                "feasible_so_far_rate": instances_feasible / len(rows),
+                "mean_best_so_far_gap": sum(best_so_far) / len(best_so_far),
+            })
+
+    trajectory_by_instance = {
+        int(trajectory["instance"]): trajectory for trajectory in trajectories
+    }
+    instance_trajectory_index = []
+    for row in sorted(rows, key=lambda item: int(item["instance"])):
+        trajectory = trajectory_by_instance.get(int(row["instance"]), {})
+        best = trajectory.get("best_experiment") or {}
+        instance_trajectory_index.append({
+            "instance": int(row["instance"]),
+            "final_gap": None if row.get("gap") is None else float(row["gap"]),
+            "status": str(row.get("status", "unknown")),
+            "model_calls": int(row.get("calls", 0)),
+            "events": int(trajectory.get("events", 0)),
+            "generation_attempts": int(trajectory.get("generation_attempts", 0)),
+            "format_failures": int(trajectory.get("format_failures", 0)),
+            "experiments": int(trajectory.get("experiments", 0)),
+            "feasible_experiments": int(trajectory.get("feasible_experiments", 0)),
+            "best_experiment": best.get("experiment"),
+            "best_gap": best.get("optimality_gap"),
+            # These are abstract, solution-free excerpts. Full instance summaries
+            # and experiment events remain available through ReadDevTrace.
+            "best_description": _compact_text(best.get("description"), 180),
+            "latest_summary": _compact_text(trajectory.get("latest_summary"), 220),
+        })
+    ranked_rows = sorted(
+        (row for row in rows if row.get("gap") is not None),
+        key=lambda row: float(row["gap"]),
+    )
+
+    def strategy_example(row: dict[str, Any]) -> dict[str, Any]:
+        trajectory = trajectory_by_instance.get(int(row["instance"]), {})
+        best = trajectory.get("best_experiment") or {}
+        description = str(best.get("description") or "").replace("\n", " ").strip()
+        if len(description) > 400:
+            description = description[:400].rstrip() + "...[truncated]"
+        return {
+            "instance": int(row["instance"]),
+            "final_gap": float(row["gap"]),
+            "best_experiment": best.get("experiment"),
+            "description": description,
+        }
+
+    return {
+        "schema_version": 2,
+        "problem": problem,
+        "instance_count": len(rows),
+        "distinct_instance_count": len(set(instance_ids)),
+        "problem_mean_gap": problem_mean_gap,
+        "median_gap": median(numeric_final_gaps) if infrastructure_valid else None,
+        "min_gap": min(numeric_final_gaps) if infrastructure_valid else None,
+        "max_gap": max(numeric_final_gaps) if infrastructure_valid else None,
+        "feasible_instances": feasible_instances,
+        "feasibility_rate": feasible_instances / len(rows),
+        "mean_model_calls": sum(float(row.get("calls", 0)) for row in rows) / len(rows),
+        "mean_generation_attempts": (
+            sum(float(item.get("generation_attempts", 0)) for item in trajectories)
+            / len(trajectories) if trajectories else None
+        ),
+        "mean_completed_experiments": (
+            sum(float(item.get("experiments", 0)) for item in trajectories)
+            / len(trajectories) if trajectories else None
+        ),
+        "format_failures": sum(int(item.get("format_failures", 0)) for item in trajectories),
+        "status_counts": dict(Counter(str(row.get("status", "unknown")) for row in rows)),
+        "error_counts": dict(error_counts),
+        "instance_trajectory_index": instance_trajectory_index,
+        "experiment_progress": experiment_progress,
+        "strong_strategy_examples": [strategy_example(row) for row in ranked_rows[:2]],
+        "weak_strategy_examples": [strategy_example(row) for row in ranked_rows[-2:]],
+    }
+
+
+def render_problem_digests(
+    digests: list[dict[str, Any]], *, max_chars: int = 10000
+) -> str:
+    """Render compact problem-level evidence after every instance batch finishes."""
+    lines = [
+        "### SimpleEvol problem-level trajectory digest",
+        "Each row aggregates all distinct instances completed for one problem; no solution content is included.",
+    ]
+    for digest in digests:
+        mean_gap = digest.get("problem_mean_gap")
+        rendered_gap = "invalid" if mean_gap is None else f"{float(mean_gap):.6f}"
+        lines.append(
+            f"- {digest['problem']}: instances={digest['distinct_instance_count']}, "
+            f"mean_gap={rendered_gap}, feasibility={digest['feasibility_rate']:.2%}, "
+            f"mean_calls={digest['mean_model_calls']:.2f}, "
+            f"format_failures={digest['format_failures']}"
+        )
+    lines.append(
+        "Compact instance index legend: i=instance, g=final gap, "
+        "f=feasible/completed experiments, b=best experiment, x=format failures."
+    )
+    for digest in digests:
+        index = digest.get("instance_trajectory_index", [])
+        if not index:
+            continue
+        entries = []
+        for item in index:
+            gap = item.get("final_gap")
+            rendered_instance_gap = "invalid" if gap is None else f"{float(gap):.3f}"
+            entries.append(
+                f"{item['instance']}:g={rendered_instance_gap},"
+                f"f={item['feasible_experiments']}/{item['experiments']},"
+                f"b={item.get('best_experiment')},x={item['format_failures']}"
+            )
+        lines.append(f"- {digest['problem']} instance_trajectory_index=" + ";".join(entries))
+    lines.append("Additional problem-level trajectory evidence:")
+    for digest in digests:
+        progress = digest.get("experiment_progress", [])
+        if progress:
+            curve = [round(float(item["mean_best_so_far_gap"]), 6) for item in progress]
+            lines.append(f"- {digest['problem']} mean_best_so_far_gap_curve={curve}")
+        if digest.get("error_counts"):
+            lines.append(f"  recurring_errors={digest['error_counts']}")
+        examples = [
+            item for item in digest.get("strong_strategy_examples", [])
+            if item.get("description")
+        ][:1]
+        if examples:
+            example = examples[0]
+            lines.append(
+                f"  strong_strategy_example=instance {example['instance']}, "
+                f"gap={example['final_gap']}: {example['description']}"
+            )
+    rendered = "\n".join(lines)
+    return rendered if len(rendered) <= max_chars else rendered[:max_chars] + "\n...[problem digest truncated]"
 
 
 def render_digest(digests: list[dict[str, Any]], *, max_chars: int = 10000) -> str:

@@ -18,7 +18,11 @@ from evaluation.model_client import (
     TransientAPIError,
     call_openai_compatible,
 )
-from evaluation.trace import DevTraceCollector, render_digest
+from evaluation.trace import (
+    DevTraceCollector,
+    build_problem_digest,
+    render_problem_digests,
+)
 from evaluation.problems import PROBLEM_NAMES, get_problem
 from evaluation.protocol import CallBudget, gap_percent, macro_average, reference_objective
 from initial_loop import SimpleEvol
@@ -165,8 +169,24 @@ def evaluate_problem(
             "gap": gap, "calls": total_calls, "status": failure or "ok",
         }
         if trace:
-            row["_trajectory_digest"] = trace.digest()
+            trajectory_digest = trace.digest()
+            row["_trajectory_digest"] = trajectory_digest
+            # Persist the completed per-instance trajectory summary separately
+            # from the event-level JSONL and the problem-level aggregate.
+            (instance_records / "trajectory_digest.json").write_text(
+                json.dumps(trajectory_digest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
         rows.append(row)
+    problem_digest = build_problem_digest(problem_name, rows, invalid_gap=invalid_gap)
+    if records_dir is not None:
+        (records_dir / "problem_digest.json").write_text(
+            json.dumps(problem_digest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    # Attach the aggregate once while preserving evaluate_problem()'s existing
+    # two-value return contract.
+    rows[0]["_problem_digest"] = problem_digest
     if any(row["gap"] is None for row in rows):
         return None, rows
     return sum(row["gap"] for row in rows) / len(rows), rows
@@ -258,9 +278,11 @@ def main() -> None:
         problem_scores[problem_name] = problem_score
         rendered = "invalid" if problem_score is None else f"{problem_score:.6f}"
         print(f"problem_mean_optimality_gap[{problem_name}]: {rendered}")
-    digests = [row["_trajectory_digest"] for row in rows if row.get("_trajectory_digest")]
-    if args.split == "dev" and digests:
-        print(render_digest(digests))
+    problem_digests = [
+        row["_problem_digest"] for row in rows if row.get("_problem_digest")
+    ]
+    if args.split == "dev" and problem_digests:
+        print(render_problem_digests(problem_digests))
     print(f"split: {args.split}")
     print(f"instances: {len(rows)}")
     if score is None:
