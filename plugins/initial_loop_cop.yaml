@@ -4,8 +4,8 @@ description: "Evolve initial_loop.py to minimize mean optimality gap across COP 
 
 eval_contract:
   metric_direction: minimize
-  eval_cmd: 'python "{cwd}/eval.py" --split dev'
-  eval_cmd_test: 'python "{cwd}/eval.py" --split test'
+  eval_cmd: 'python eval.py --split dev'
+  eval_cmd_test: 'python eval.py --split test'
   eval_timeout: 14400
   dataset_info: "Each data/<problem>/ directory contains dev.json and test.json"
 
@@ -15,7 +15,6 @@ protected_paths:
   - "eval.py"
   - "plugins/**"
 
-# 注入给 Coordinator，说明全局研究目标
 meta_preamble_inject: |
   Evolve the agent harness `initial_loop.py` to minimize mean optimality gap across the configured
   combinatorial optimization problems.
@@ -25,15 +24,13 @@ meta_preamble_inject: |
   Do not run a test baseline during initialization. Run `python eval.py --split test` only as
   a held-out admission gate after a candidate's dev score is lower than the current dev trunk
   score (initially the dev baseline score).
-  Do not inspect or execute anything under `arbor-bin/`; it contains archived records and
-  offline test utilities that are not research evidence and are outside the evaluation protocol.
+  Do not directly inspect or execute anything under `arbor-bin/`; use only the scoped
+  `ReadDevTrace` tool for current-run, current-node development trajectory evidence.
   The host terminal is Windows PowerShell. Use PowerShell-native syntax for every command
   (for example, `Get-ChildItem -Name`); do not use CMD/Bash-only forms such as `dir /B`,
   `grep`, or `&&`. For JSON inspection, use `Get-Content -Raw | ConvertFrom-Json`; avoid
   nested quoted expressions in `python -c`.
 
-
-# 注入给每个 Executor，规定具体实验流程
 sub_workflow_inject: |
   Edit only the agent harness `initial_loop.py`.
   Data flow: `eval.py` supplies a public COP instance and protected evaluation tool;
@@ -51,6 +48,9 @@ sub_workflow_inject: |
   state change, generated artifact, or targeted log entry). If the mechanism is unreachable,
   inactive, or only partially wired, continue fixing it; do not submit an evaluation result or
   conclude that the research hypothesis failed merely because the code compiles or eval exits.
+  Preserve the `_emit_trace`/`trace_sink` observability contract. After formal dev evaluation,
+  use the automatically returned trajectory digest; call `ReadDevTrace` only for the specific
+  failure, summary, timeline, or experiment detail needed to explain the result.
   After every candidate implementation, you must run the protected development evaluator
   `python eval.py --split dev`; its reported `score:` is the only official candidate result.
   Local unit checks or `python -c` commands may assist debugging but must never replace the
