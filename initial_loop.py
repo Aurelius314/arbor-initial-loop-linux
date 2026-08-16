@@ -8,6 +8,44 @@ logger = logging.getLogger(__name__)
 
 
 class SimpleEvol:
+    PROBLEM_SPECS = {
+        "tsp": {
+            "label": "Route",
+            "schema": "a JSON list containing every 0-indexed node exactly once; an optional repeated start node may close the tour",
+            "warning": "Visit every node exactly once and form a complete tour.",
+        },
+        "cvrp": {
+            "label": "Routes",
+            "schema": "a JSON list of routes; every route starts and ends at depot 0, and every customer appears exactly once overall",
+            "warning": "Cover every customer exactly once and respect vehicle capacity on every route.",
+        },
+        "op": {
+            "label": "Route",
+            "schema": "a JSON list of distinct 0-indexed nodes beginning at the configured start node",
+            "warning": "Do not repeat nodes and keep the route within the maximum travel length.",
+        },
+        "mis": {
+            "label": "Set",
+            "schema": "a JSON list of distinct 0-indexed vertices in the independent set",
+            "warning": "No selected pair may share an edge.",
+        },
+        "mvc": {
+            "label": "Set",
+            "schema": "a JSON list of distinct 0-indexed vertices in the vertex cover",
+            "warning": "Every graph edge must have at least one selected endpoint.",
+        },
+        "pfsp": {
+            "label": "Order",
+            "schema": "a JSON list that is a permutation of all 1-indexed jobs",
+            "warning": "Include every 1-indexed job exactly once.",
+        },
+        "jssp": {
+            "label": "Schedule",
+            "schema": "a JSON list with one row per machine; each row is a permutation of all 0-indexed jobs",
+            "warning": "Give one complete job permutation per machine; the combined orders must respect job precedence without cycles.",
+        },
+    }
+
     def __init__(
         self,
         cfg,
@@ -31,7 +69,10 @@ class SimpleEvol:
         if obj_type not in {"min", "max"}:
             raise ValueError("obj_type must be 'min' or 'max'")
         self.obj_type = obj_type
-        self.problem_warn = "Visit every city exactly once. Do not repeat any city, except that the starting city may appear once again as the final city to close the tour."
+        if self.problem_name not in self.PROBLEM_SPECS:
+            raise ValueError(f"unsupported COP problem: {self.problem_name}")
+        self.problem_spec = self.PROBLEM_SPECS[self.problem_name]
+        self.problem_warn = self.problem_spec["warning"]
         self.max_experiments = cfg.max_experiments
         self.compress_every = cfg.compress_every
         self.max_generation_attempts = getattr(
@@ -61,7 +102,7 @@ class SimpleEvol:
         # ========= Runtime states =========
         self.current_instance_index = 0
         self.current_instance = self.eval_dataset[0]
-        self.problem_size = int(self.current_instance["num_nodes"])
+        self.problem_size = self._problem_size(self.current_instance)
         self.problem_tai_prompt = self.problem_tai_prompts[0]
         if eval_tool is None:
             raise ValueError("eval_tool must be injected by the protected evaluator")
@@ -81,6 +122,12 @@ class SimpleEvol:
     # -------------------------------------------------------------------------
     # Prompt / message construction
     # -------------------------------------------------------------------------
+
+    def _problem_size(self, instance) -> int:
+        size_key = "n" if self.problem_name in {"pfsp", "jssp"} else "num_nodes"
+        if size_key not in instance:
+            raise ValueError(f"{self.problem_name} instance is missing {size_key}")
+        return int(instance[size_key])
 
     def _load_batch_prompts(self, eval_dataset, batch_indices) -> list[str]:
         """
@@ -111,7 +158,7 @@ class SimpleEvol:
 
         return batch_prompts
 
-    def _build_initial_messages(self) -> str:
+    def _build_initial_messages(self) -> list[dict[str, str]]:
 
         tai_prompt = self.problem_tai_prompt.strip()
 
@@ -138,17 +185,20 @@ class SimpleEvol:
 
             2. When you are generating the solution:
             Output exactly one complete candidate solution, and a concise description of the construction strategy.
+            Never copy a previous candidate or expose any complete or partial candidate in the description or summaries.
             """.format(max_experiments=self.max_experiments).strip()
 
         format_suffix = """
 
         Important output rule:
         Your response must contain exactly two parts in the following order:
-        1. A single candidate solution formatted as above requirement.
+        1. `<solution>...</solution>`, containing only valid JSON with this problem-specific meaning:
+           {solution_schema}
 
         2. After generating the solution, write a concise description after the solution (you should wrap it using <description> ... </description>).
-        The description must NOT include any previous solution or solution fragment.
-        """.strip()
+        The description must NOT include any current or previous solution, solution fragment, node/job sequence, route, set, assignment, or schedule.
+        Ignore any legacy response-format wording inside the instance instruction; the `<solution>` JSON format above is mandatory.
+        """.format(solution_schema=self.problem_spec["schema"]).strip()
 
         system_prompt = f"{system_generator_prompt}\n\n{format_suffix}"
 
@@ -166,8 +216,9 @@ class SimpleEvol:
         return {
             "role": "user",
             "content": (
-                f"Invalid solution format. Output the components required in ### Input: "
-                f", followed by `<description>...</description>`.\n\n"
+                "Invalid solution format. Output exactly "
+                f"`<solution>JSON</solution>` using {self.problem_spec['schema']}, "
+                "followed by `<description>...</description>`.\n\n"
                 f"Important feasibility warning:\n{self.problem_warn}"
             ),
         }
@@ -214,7 +265,7 @@ class SimpleEvol:
         4. **Task knowledge**: Summarize reusable insights learned about the problem structure and effective solution construction.
 
         Important constraints:
-        - Do NOT include complete or partial tours, node sequences, solution fragments, or any previously generated feasible solution.
+        - Do NOT include complete or partial solutions, node/job sequences, routes, sets, assignments, schedules, or any previously generated feasible solution.
         - The summary must only preserve abstract strategies, evaluation results, mistakes, and task-level insights.
         - Do not suggest a specific next solution or next-step modification.
 
@@ -281,17 +332,30 @@ class SimpleEvol:
         return match.group(1).strip() if match else ""
 
     def _extract_solution_and_description(self, text: str):
-        match = re.search(r"Route\s*:\s*\[([^\]]*)\]", text, flags=re.IGNORECASE)
-        if not match:
+        if not text:
             return None, ""
+        match = re.search(
+            r"<solution>\s*(.*?)\s*</solution>",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
         try:
-            solution_text = match.group(1).strip()
-            solution = (
-                [int(x.strip()) for x in solution_text.split(",")]
-                if solution_text
-                else []
-            )
-        except ValueError:
+            if match:
+                solution = json.loads(match.group(1))
+            else:
+                # Backward compatibility for the dataset's historical
+                # Route/Routes/Set/Order/Schedule response convention.
+                legacy = re.search(
+                    rf"\b{re.escape(self.problem_spec['label'])}\s*:\s*",
+                    text,
+                    flags=re.IGNORECASE,
+                )
+                if not legacy:
+                    return None, ""
+                solution, _ = json.JSONDecoder().raw_decode(text[legacy.end():].lstrip())
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None, ""
+        if not isinstance(solution, list):
             return None, ""
 
         description = self._extract_description_from_response(text)
@@ -398,16 +462,10 @@ class SimpleEvol:
         for instance_index, instance in enumerate(self.eval_dataset):
             self.current_instance_index = instance_index
             self.current_instance = instance
-            self.problem_size = int(instance["num_nodes"])
+            self.problem_size = self._problem_size(instance)
             self.problem_tai_prompt = self.problem_tai_prompts[instance_index]
-
-            coords = instance.get("instance")
-            if not isinstance(coords, list) or len(coords) != self.problem_size:
-                coordinate_count = len(coords) if isinstance(coords, list) else 0
-                raise ValueError(
-                    f"dev instance {instance_index} declares {self.problem_size} nodes "
-                    f"but contains {coordinate_count} coordinates"
-                )
+            if "instance" not in instance:
+                raise ValueError(f"{self.problem_name} instance {instance_index} lacks structured data")
 
             # Every instance is an independent optimization run.
             self.messages = self._build_initial_messages()
