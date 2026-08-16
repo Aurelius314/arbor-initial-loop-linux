@@ -11,6 +11,7 @@ PROBLEMS = {
     "pfsp": pfsp,
     "tsp": tsp,
 }
+PROBLEM_NAMES = tuple(PROBLEMS)
 
 
 def get_problem(name: str):

@@ -1,5 +1,4 @@
 """Protected scoring and solver-call budget."""
-# 通用，如预算、mean gap 聚合
 
 from __future__ import annotations
 
@@ -7,11 +6,8 @@ import re
 from typing import Any, Callable
 
 
-MAX_CALLS_PER_INSTANCE = 6  # four candidates, one compression, one final summary
-
-
 class CallBudget:
-    def __init__(self, backend: Callable[..., str], limit: int = MAX_CALLS_PER_INSTANCE):
+    def __init__(self, backend: Callable[..., str], limit: int):
         self.backend, self.limit, self.calls = backend, limit, 0
 
     def __call__(self, **kwargs: Any) -> str:
@@ -38,3 +34,13 @@ def gap_percent(candidate: float, reference: float, obj_type: str) -> float:
     if obj_type == "max":
         return 100.0 * (reference - candidate) / abs(reference)
     raise ValueError("obj_type must be 'min' or 'max'")
+
+
+def macro_average(problem_scores: dict[str, float | None]) -> float | None:
+    """Equal-weight average of problem-level mean gaps."""
+    if not problem_scores:
+        raise ValueError("at least one problem score is required")
+    if any(score is None for score in problem_scores.values()):
+        return None
+    valid_scores = [score for score in problem_scores.values() if score is not None]
+    return sum(valid_scores) / len(valid_scores)
