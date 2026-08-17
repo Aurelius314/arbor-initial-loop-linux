@@ -73,6 +73,9 @@ sub_workflow_inject: |
   `ReadDevTrace(view="instance_digest", problem=..., instance=...)` for one completed instance,
   and `ReadDevTrace(view="experiment", problem=..., instance=..., experiment=...)` only when a
   particular experiment needs diagnosis. The trace evidence is diagnostic and never changes score.
+  Strong/weak instance examples are ranked by gap improvement/regression relative to that same
+  instance's baseline, never by raw gap, so differences in instance size or difficulty are not
+  mistaken for strategy quality.
   Your final Executor report must state the macro score and all seven per-problem mean gaps, compare
   them with the current trunk/baseline when available, and use the class-level digest to explain
   where the hypothesis helped, failed, or was not activated. Per-problem gaps are diagnostic

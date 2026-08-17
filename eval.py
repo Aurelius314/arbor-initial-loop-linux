@@ -74,6 +74,7 @@ def evaluate_problem(
     backend: Callable[..., str],
     invalid_gap: float = 100.0,
     records_dir: Path | None = None,
+    baseline_gaps: dict[int, float] | None = None,
 ):
     problem = get_problem(problem_name)
     rows = []
@@ -178,7 +179,12 @@ def evaluate_problem(
                 encoding="utf-8",
             )
         rows.append(row)
-    problem_digest = build_problem_digest(problem_name, rows, invalid_gap=invalid_gap)
+    problem_digest = build_problem_digest(
+        problem_name,
+        rows,
+        invalid_gap=invalid_gap,
+        baseline_gaps=baseline_gaps,
+    )
     if records_dir is not None:
         (records_dir / "problem_digest.json").write_text(
             json.dumps(problem_digest, ensure_ascii=False, indent=2),
@@ -190,6 +196,34 @@ def evaluate_problem(
     if any(row["gap"] is None for row in rows):
         return None, rows
     return sum(row["gap"] for row in rows) / len(rows), rows
+
+
+def _load_baseline_instance_gaps(
+    project_root: Path,
+    run_id: str,
+    problem_name: str,
+) -> dict[int, float] | None:
+    """Load the same-run dev baseline without making diagnostics score-critical."""
+    paths = sorted(
+        (project_root / "arbor-bin" / "experiment_records" / run_id /
+         "dev" / problem_name).glob("eval_baseline_*/problem_digest.json")
+    )
+    if not paths:
+        return None
+    try:
+        digest = json.loads(paths[-1].read_text(encoding="utf-8"))
+        if digest.get("problem") != problem_name:
+            return None
+        return {
+            int(item["instance"]): float(item["final_gap"])
+            for item in digest.get("instance_trajectory_index", [])
+            if item.get("final_gap") is not None
+        }
+    except (OSError, ValueError, TypeError, KeyError):
+        logging.getLogger(__name__).warning(
+            "Could not load instance baseline gaps for %s", problem_name
+        )
+        return None
 
 
 def evaluate_split(split: str, backend: Callable[..., str], invalid_gap: float = 100.0):
@@ -240,6 +274,11 @@ def evaluate_split(split: str, backend: Callable[..., str], invalid_gap: float =
             split / problem_dir.name / evaluation_id
         )
         records_dir.mkdir(parents=True, exist_ok=True)
+        baseline_gaps = None
+        if split == "dev" and event != "baseline":
+            baseline_gaps = _load_baseline_instance_gaps(
+                project_root, arbor_run_id, problem_name
+            )
         file_handler = logging.FileHandler(records_dir / "run.log", encoding="utf-8")
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
@@ -248,7 +287,14 @@ def evaluate_split(split: str, backend: Callable[..., str], invalid_gap: float =
         root_logger.setLevel(logging.INFO)
         root_logger.addHandler(file_handler)
         try:
-            score, rows = evaluate_problem(problem_name, instances, backend, invalid_gap, records_dir)
+            score, rows = evaluate_problem(
+                problem_name,
+                instances,
+                backend,
+                invalid_gap,
+                records_dir,
+                baseline_gaps,
+            )
         finally:
             root_logger.removeHandler(file_handler)
             root_logger.setLevel(previous_log_level)

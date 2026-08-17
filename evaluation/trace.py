@@ -101,6 +101,7 @@ def build_problem_digest(
     rows: list[dict[str, Any]],
     *,
     invalid_gap: float = 100.0,
+    baseline_gaps: dict[int, float] | None = None,
 ) -> dict[str, Any]:
     """Aggregate one completed problem batch across its distinct instances."""
     if not rows:
@@ -164,11 +165,28 @@ def build_problem_digest(
     }
     instance_trajectory_index = []
     for row in sorted(rows, key=lambda item: int(item["instance"])):
+        instance_id = int(row["instance"])
         trajectory = trajectory_by_instance.get(int(row["instance"]), {})
         best = trajectory.get("best_experiment") or {}
+        final_gap = None if row.get("gap") is None else float(row["gap"])
+        baseline_gap = (
+            float(baseline_gaps[instance_id])
+            if baseline_gaps is not None and instance_id in baseline_gaps
+            else None
+        )
+        gap_regression = (
+            final_gap - baseline_gap
+            if final_gap is not None and baseline_gap is not None else None
+        )
         instance_trajectory_index.append({
-            "instance": int(row["instance"]),
-            "final_gap": None if row.get("gap") is None else float(row["gap"]),
+            "instance": instance_id,
+            "final_gap": final_gap,
+            "baseline_gap": baseline_gap,
+            # Positive regression means worse; positive improvement means better.
+            "gap_regression_vs_baseline": gap_regression,
+            "gap_improvement_vs_baseline": (
+                -gap_regression if gap_regression is not None else None
+            ),
             "status": str(row.get("status", "unknown")),
             "model_calls": int(row.get("calls", 0)),
             "events": int(trajectory.get("events", 0)),
@@ -183,26 +201,46 @@ def build_problem_digest(
             "best_description": _compact_text(best.get("description"), 180),
             "latest_summary": _compact_text(trajectory.get("latest_summary"), 220),
         })
-    ranked_rows = sorted(
-        (row for row in rows if row.get("gap") is not None),
-        key=lambda row: float(row["gap"]),
-    )
+    comparable_instances = [
+        item for item in instance_trajectory_index
+        if item["gap_regression_vs_baseline"] is not None
+    ]
+    baseline_comparison_complete = len(comparable_instances) == len(rows)
 
-    def strategy_example(row: dict[str, Any]) -> dict[str, Any]:
-        trajectory = trajectory_by_instance.get(int(row["instance"]), {})
+    def strategy_example(item: dict[str, Any]) -> dict[str, Any]:
+        trajectory = trajectory_by_instance.get(int(item["instance"]), {})
         best = trajectory.get("best_experiment") or {}
         description = str(best.get("description") or "").replace("\n", " ").strip()
         if len(description) > 400:
             description = description[:400].rstrip() + "...[truncated]"
         return {
-            "instance": int(row["instance"]),
-            "final_gap": float(row["gap"]),
+            "instance": int(item["instance"]),
+            "final_gap": item["final_gap"],
+            "baseline_gap": item["baseline_gap"],
+            "gap_regression_vs_baseline": item["gap_regression_vs_baseline"],
+            "gap_improvement_vs_baseline": item["gap_improvement_vs_baseline"],
             "best_experiment": best.get("experiment"),
             "description": description,
         }
 
+    strong_examples: list[dict[str, Any]] = []
+    weak_examples: list[dict[str, Any]] = []
+    if baseline_comparison_complete:
+        strong_ranked = sorted(
+            comparable_instances,
+            key=lambda item: float(item["gap_improvement_vs_baseline"]),
+            reverse=True,
+        )
+        weak_ranked = sorted(
+            comparable_instances,
+            key=lambda item: float(item["gap_regression_vs_baseline"]),
+            reverse=True,
+        )
+        strong_examples = [strategy_example(item) for item in strong_ranked[:2]]
+        weak_examples = [strategy_example(item) for item in weak_ranked[:2]]
+
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "problem": problem,
         "instance_count": len(rows),
         "distinct_instance_count": len(set(instance_ids)),
@@ -224,10 +262,11 @@ def build_problem_digest(
         "format_failures": sum(int(item.get("format_failures", 0)) for item in trajectories),
         "status_counts": dict(Counter(str(row.get("status", "unknown")) for row in rows)),
         "error_counts": dict(error_counts),
+        "baseline_comparison_complete": baseline_comparison_complete,
         "instance_trajectory_index": instance_trajectory_index,
         "experiment_progress": experiment_progress,
-        "strong_strategy_examples": [strategy_example(row) for row in ranked_rows[:2]],
-        "weak_strategy_examples": [strategy_example(row) for row in ranked_rows[-2:]],
+        "strong_strategy_examples": strong_examples,
+        "weak_strategy_examples": weak_examples,
     }
 
 
@@ -250,6 +289,7 @@ def render_problem_digests(
         )
     lines.append(
         "Compact instance index legend: i=instance, g=final gap, "
+        "d=current gap minus baseline gap (positive means regression), "
         "f=feasible/completed experiments, b=best experiment, x=format failures."
     )
     for digest in digests:
@@ -260,8 +300,11 @@ def render_problem_digests(
         for item in index:
             gap = item.get("final_gap")
             rendered_instance_gap = "invalid" if gap is None else f"{float(gap):.3f}"
+            delta = item.get("gap_regression_vs_baseline")
+            rendered_delta = "na" if delta is None else f"{float(delta):+.3f}"
             entries.append(
                 f"{item['instance']}:g={rendered_instance_gap},"
+                f"d={rendered_delta},"
                 f"f={item['feasible_experiments']}/{item['experiments']},"
                 f"b={item.get('best_experiment')},x={item['format_failures']}"
             )
@@ -282,7 +325,21 @@ def render_problem_digests(
             example = examples[0]
             lines.append(
                 f"  strong_strategy_example=instance {example['instance']}, "
-                f"gap={example['final_gap']}: {example['description']}"
+                f"gap={example['final_gap']}, "
+                f"improvement_vs_baseline={example['gap_improvement_vs_baseline']}: "
+                f"{example['description']}"
+            )
+        weak = [
+            item for item in digest.get("weak_strategy_examples", [])
+            if item.get("description")
+        ][:1]
+        if weak:
+            example = weak[0]
+            lines.append(
+                f"  weak_strategy_example=instance {example['instance']}, "
+                f"gap={example['final_gap']}, "
+                f"regression_vs_baseline={example['gap_regression_vs_baseline']}: "
+                f"{example['description']}"
             )
     rendered = "\n".join(lines)
     return rendered if len(rendered) <= max_chars else rendered[:max_chars] + "\n...[problem digest truncated]"
