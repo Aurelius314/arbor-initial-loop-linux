@@ -71,12 +71,56 @@ class DevTraceCollector:
             for item in experiments
             if not item["data"].get("feasible")
         )
-        summaries = [
-            item["data"].get("summary", "")
+        strategy_notes = [
+            item["data"].get("notes", item["data"].get("summary", ""))
             for item in self.events
-            if item["event"] in {"context_summary", "final_summary"}
+            if item["event"] in {"strategy_notes", "final_summary"}
         ]
+        starts = [item for item in self.events if item["event"] == "trajectory_start"]
+        results = [item for item in self.events if item["event"] == "evaluator_result"]
+        start = starts[-1]["data"] if starts else {}
+        result = results[-1]["data"] if results else {}
+        worst = max(valid, key=lambda item: float(item["data"]["optimality_gap"])) if valid else None
+        target_experiments = int(start.get("max_experiments", len(experiments)))
+        verified_statistics = {
+            "source": "structured_events",
+            "target_experiments": target_experiments,
+            "completed_experiments": len(experiments),
+            "completion_rate": (
+                len(experiments) / target_experiments if target_experiments else None
+            ),
+            "feasible_experiments": len(valid),
+            "experiment_feasibility_rate": (
+                len(valid) / len(experiments) if experiments else 0.0
+            ),
+            "generation_attempts": sum(
+                item["event"] == "generation_attempt" for item in self.events
+            ),
+            "format_failures": sum(
+                item["event"] == "invalid_format" for item in self.events
+            ),
+            "model_calls": int(result.get("calls", 0)),
+            "status": str(result.get("status", "unknown")),
+            "final_objective": result.get("objective"),
+            "final_gap": result.get("optimality_gap"),
+            "best_experiment": best["data"].get("experiment") if best else None,
+            "best_objective": best["data"].get("objective") if best else None,
+            "best_gap": best["data"].get("optimality_gap") if best else None,
+            "worst_feasible_experiment": (
+                worst["data"].get("experiment") if worst else None
+            ),
+            "worst_feasible_objective": worst["data"].get("objective") if worst else None,
+            "worst_feasible_gap": worst["data"].get("optimality_gap") if worst else None,
+            "first_feasible_experiment": (
+                valid[0]["data"].get("experiment") if valid else None
+            ),
+            "last_feasible_experiment": (
+                valid[-1]["data"].get("experiment") if valid else None
+            ),
+            "error_counts": dict(error_counts),
+        }
         return {
+            "schema_version": 4,
             "problem": self.problem,
             "instance": self.instance,
             "events": len(self.events),
@@ -92,7 +136,10 @@ class DevTraceCollector:
             "gap_curve": [item["data"].get("optimality_gap") for item in experiments],
             "error_counts": dict(error_counts),
             "best_experiment": best["data"] if best else None,
-            "latest_summary": summaries[-1] if summaries else "",
+            "verified_statistics": verified_statistics,
+            # Qualitative model-authored notes are retained for human audit and
+            # optional inspection, but never rendered as factual Arbor evidence.
+            "unverified_strategy_notes": strategy_notes[-1] if strategy_notes else "",
         }
 
 
@@ -167,6 +214,7 @@ def build_problem_digest(
     for row in sorted(rows, key=lambda item: int(item["instance"])):
         instance_id = int(row["instance"])
         trajectory = trajectory_by_instance.get(int(row["instance"]), {})
+        statistics = trajectory.get("verified_statistics", {})
         best = trajectory.get("best_experiment") or {}
         final_gap = None if row.get("gap") is None else float(row["gap"])
         baseline_gap = (
@@ -188,7 +236,7 @@ def build_problem_digest(
                 -gap_regression if gap_regression is not None else None
             ),
             "status": str(row.get("status", "unknown")),
-            "model_calls": int(row.get("calls", 0)),
+            "model_calls": int(statistics.get("model_calls", row.get("calls", 0))),
             "events": int(trajectory.get("events", 0)),
             "generation_attempts": int(trajectory.get("generation_attempts", 0)),
             "format_failures": int(trajectory.get("format_failures", 0)),
@@ -198,8 +246,7 @@ def build_problem_digest(
             "best_gap": best.get("optimality_gap"),
             # These are abstract, solution-free excerpts. Full instance summaries
             # and experiment events remain available through ReadDevTrace.
-            "best_description": _compact_text(best.get("description"), 180),
-            "latest_summary": _compact_text(trajectory.get("latest_summary"), 220),
+            "unverified_best_description": _compact_text(best.get("description"), 180),
         })
     comparable_instances = [
         item for item in instance_trajectory_index
@@ -220,7 +267,7 @@ def build_problem_digest(
             "gap_regression_vs_baseline": item["gap_regression_vs_baseline"],
             "gap_improvement_vs_baseline": item["gap_improvement_vs_baseline"],
             "best_experiment": best.get("experiment"),
-            "description": description,
+            "unverified_description": description,
         }
 
     strong_examples: list[dict[str, Any]] = []
@@ -240,7 +287,7 @@ def build_problem_digest(
         weak_examples = [strategy_example(item) for item in weak_ranked[:2]]
 
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "problem": problem,
         "instance_count": len(rows),
         "distinct_instance_count": len(set(instance_ids)),
@@ -258,6 +305,17 @@ def build_problem_digest(
         "mean_completed_experiments": (
             sum(float(item.get("experiments", 0)) for item in trajectories)
             / len(trajectories) if trajectories else None
+        ),
+        "total_completed_experiments": sum(
+            int(item.get("experiments", 0)) for item in trajectories
+        ),
+        "total_feasible_experiments": sum(
+            int(item.get("feasible_experiments", 0)) for item in trajectories
+        ),
+        "experiment_feasibility_rate": (
+            sum(int(item.get("feasible_experiments", 0)) for item in trajectories)
+            / sum(int(item.get("experiments", 0)) for item in trajectories)
+            if sum(int(item.get("experiments", 0)) for item in trajectories) else 0.0
         ),
         "format_failures": sum(int(item.get("format_failures", 0)) for item in trajectories),
         "status_counts": dict(Counter(str(row.get("status", "unknown")) for row in rows)),
@@ -284,6 +342,7 @@ def render_problem_digests(
         lines.append(
             f"- {digest['problem']}: instances={digest['distinct_instance_count']}, "
             f"mean_gap={rendered_gap}, feasibility={digest['feasibility_rate']:.2%}, "
+            f"experiment_feasibility={digest.get('experiment_feasibility_rate', 0.0):.2%}, "
             f"mean_calls={digest['mean_model_calls']:.2f}, "
             f"format_failures={digest['format_failures']}"
         )
@@ -319,27 +378,27 @@ def render_problem_digests(
             lines.append(f"  recurring_errors={digest['error_counts']}")
         examples = [
             item for item in digest.get("strong_strategy_examples", [])
-            if item.get("description")
+            if item.get("unverified_description")
         ][:1]
         if examples:
             example = examples[0]
             lines.append(
-                f"  strong_strategy_example=instance {example['instance']}, "
+                f"  strong_strategy_evidence=instance {example['instance']}, "
                 f"gap={example['final_gap']}, "
                 f"improvement_vs_baseline={example['gap_improvement_vs_baseline']}: "
-                f"{example['description']}"
+                f"unverified_model_description={example['unverified_description']}"
             )
         weak = [
             item for item in digest.get("weak_strategy_examples", [])
-            if item.get("description")
+            if item.get("unverified_description")
         ][:1]
         if weak:
             example = weak[0]
             lines.append(
-                f"  weak_strategy_example=instance {example['instance']}, "
+                f"  weak_strategy_evidence=instance {example['instance']}, "
                 f"gap={example['final_gap']}, "
                 f"regression_vs_baseline={example['gap_regression_vs_baseline']}: "
-                f"{example['description']}"
+                f"unverified_model_description={example['unverified_description']}"
             )
     rendered = "\n".join(lines)
     return rendered if len(rendered) <= max_chars else rendered[:max_chars] + "\n...[problem digest truncated]"
@@ -352,11 +411,13 @@ def render_digest(digests: list[dict[str, Any]], *, max_chars: int = 10000) -> s
         "Diagnostic evidence only; the protected evaluator score remains authoritative.",
     ]
     for digest in digests:
+        statistics = digest.get("verified_statistics", {})
         lines.append(
             f"- {digest['problem']} instance {digest['instance']}: "
-            f"{digest['feasible_experiments']}/{digest['experiments']} feasible, "
-            f"{digest['format_failures']} format failures, "
-            f"{digest['generation_attempts']} generation attempts"
+            f"{statistics.get('feasible_experiments', digest['feasible_experiments'])}/"
+            f"{statistics.get('completed_experiments', digest['experiments'])} feasible, "
+            f"{statistics.get('format_failures', digest['format_failures'])} format failures, "
+            f"{statistics.get('generation_attempts', digest['generation_attempts'])} generation attempts"
         )
         lines.append(f"  objective_curve={digest['objective_curve']}")
         lines.append(f"  gap_curve={digest['gap_curve']}")
@@ -371,11 +432,6 @@ def render_digest(digests: list[dict[str, Any]], *, max_chars: int = 10000) -> s
                 f"  best=experiment {best.get('experiment')}, "
                 f"objective={best.get('objective')}, gap={best.get('optimality_gap')}"
             )
-            lines.append(f"  best_description={description}")
-        summary = str(digest.get("latest_summary") or "").strip()
-        if summary:
-            if len(summary) > 1200:
-                summary = summary[:1200] + "...[truncated]"
-            lines.append("  latest_summary=" + summary.replace("\n", " "))
+            lines.append(f"  unverified_model_description={description}")
     rendered = "\n".join(lines)
     return rendered if len(rendered) <= max_chars else rendered[:max_chars] + "\n...[digest truncated]"

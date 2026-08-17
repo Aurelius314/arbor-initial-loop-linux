@@ -492,21 +492,22 @@ class SimpleEvol:
             "role": "user",
             "content": (
                 f"You have completed all {self.max_experiments} experiments. "
-                "Please now provide your final summary:\n\n"
+                "Provide qualitative strategy notes only. Do not state or infer "
+                "experiment counts, feasibility rates, objectives, gaps, route counts, "
+                "or any other numerical result; those statistics are generated "
+                "deterministically from evaluator events.\n\n"
                 "1. What strategies did you try?\n"
-                "2. How did each strategy perform?\n"
-                "3. What patterns or insights did you discover?\n"
-                "4. What types of construction designs are more effective?\n"
-                "5. Which abstract construction strategy performed best?"
+                "2. What qualitative patterns or insights did you discover?\n"
+                "3. What construction designs appeared more or less effective?"
             ),
         }
         self.messages.append(final_user_msg)
 
         final_message = self._call_llm_once(self.messages)
         self._emit_trace(
-            "final_summary",
+            "strategy_notes",
             experiment=self.experiment_count,
-            summary=final_message.content or "",
+            notes=final_message.content or "",
         )
         self.messages.append(
             {
@@ -516,7 +517,7 @@ class SimpleEvol:
         )
 
         logger.info("=" * 70)
-        logger.info("[LLM Final Summary]")
+        logger.info("[Unverified LLM Strategy Notes — qualitative only]")
         logger.info("=" * 70)
         logger.info(final_message.content if final_message.content else "")
 
@@ -734,19 +735,33 @@ class SimpleEvol:
         # Post-run logging
         # ------------------------------------------------------------------
         logger.info("=" * 70)
-        logger.info("Experimental Statistics")
+        logger.info("Verified Experimental Statistics (from structured evaluator events)")
         logger.info("=" * 70)
 
         best_result = self.get_best_result(self.experiment_results)
         feasible_count = sum(r["feasible"] for r in self.experiment_results)
-        feasibility_rate = feasible_count / self.max_experiments
+        completed_count = len(self.experiment_results)
+        feasibility_rate = feasible_count / completed_count if completed_count else 0.0
         best_objective = best_result["obj"] if best_result is not None else None
         best_optimality_gap = self._calculate_optimality_gap(best_objective, optimal_obj)
 
         logger.info(
             f"Feasibility Rate: {feasibility_rate:.2%} "
-            f"({feasible_count}/{self.max_experiments})"
+            f"({feasible_count}/{completed_count})"
         )
+        logger.info(
+            f"Completion Rate: {completed_count / self.max_experiments:.2%} "
+            f"({completed_count}/{self.max_experiments})"
+        )
+        logger.info(f"Generation Attempts: {generation_attempts}")
+        logger.info(f"Format Failures: {format_failures}")
+        error_counts = {}
+        for result in self.experiment_results:
+            if result["feasible"]:
+                continue
+            error = str(result.get("error") or "unknown")
+            error_counts[error] = error_counts.get(error, 0) + 1
+        logger.info(f"Evaluation Errors: {json.dumps(error_counts, ensure_ascii=False)}")
         logger.info(f"Best obj: {best_objective}")
         logger.info(f"Optimality Gap: {best_optimality_gap}")
 
