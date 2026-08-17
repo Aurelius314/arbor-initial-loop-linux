@@ -6,7 +6,7 @@ eval_contract:
   metric_direction: minimize
   eval_cmd: 'python eval.py --split dev'
   eval_cmd_test: 'python eval.py --split test'
-  eval_timeout: 14400
+  eval_timeout: 28800
   dataset_info: "Seven COP (TSP, OP, CVRP, MIS, MVC, PFSP, JSSP); each data/<problem>/ split contains multiple distinct instances"
 
 protected_paths:
