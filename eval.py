@@ -43,11 +43,31 @@ class _Choice:
 class _Client:
     """Adapt the protected backend to SimpleEvol's original client interface."""
 
-    def __init__(self, backend: Callable[..., str], limit: int):
+    def __init__(
+        self,
+        backend: Callable[..., str],
+        limit: int,
+        diagnostics_dir: Path | None = None,
+    ):
         self.call = CallBudget(backend, limit=limit)
+        self.diagnostics_dir = diagnostics_dir
 
-    def chat_completion(self, n: int, messages: list[dict[str, str]]):
-        return [_Choice(self.call(messages=messages)) for _ in range(n)]
+    def chat_completion(
+        self,
+        n: int,
+        messages: list[dict[str, str]],
+        response_mode: str = "text",
+    ):
+        return [
+            _Choice(
+                self.call(
+                    messages=messages,
+                    diagnostics_dir=self.diagnostics_dir,
+                    response_mode=response_mode,
+                )
+            )
+            for _ in range(n)
+        ]
 
 
 class _EvalTool:
@@ -84,12 +104,9 @@ def evaluate_problem(
         compress_every=5,
         max_generation_attempts=24,
     )
-    compression_calls = (
-        (solver_cfg.max_experiments - 1) // solver_cfg.compress_every
-        if solver_cfg.compress_every > 0 else 0
-    )
-    # Generation attempts + scheduled compression calls + final summary.
-    call_limit = solver_cfg.max_generation_attempts + compression_calls + 1
+    # Independent runaway guard. It deliberately leaves room for evolved
+    # harnesses to add rollouts, verification, compression, or summaries.
+    call_limit = 64
     for index, instance in enumerate(instances):
         instance_records = records_dir / f"instance_{index:03d}" if records_dir else None
         trace = DevTraceCollector(
@@ -105,7 +122,11 @@ def evaluate_problem(
                 trace.emit("evaluator_attempt", attempt=instance_attempt)
             # Each retry receives a fresh client and call budget so a network
             # outage cannot consume the next attempt's generation budget.
-            client = _Client(backend, limit=call_limit)
+            client = _Client(
+                backend,
+                limit=call_limit,
+                diagnostics_dir=instance_records,
+            )
             solver = SimpleEvol(
                 cfg=solver_cfg,
                 root_dir=ROOT,

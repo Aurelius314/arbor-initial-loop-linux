@@ -119,6 +119,22 @@ class SimpleEvol:
         except Exception as exc:
             logger.warning("Trajectory trace emission failed: %s", exc)
 
+    def _record_invalid_response(self, response_text: str, attempt: int) -> None:
+        """Persist an unparsable model response for offline debugging only."""
+        if self.exp_records_dir is None:
+            return
+        try:
+            invalid_dir = self.exp_records_dir / "invalid_response"
+            invalid_dir.mkdir(parents=True, exist_ok=True)
+            record_path = invalid_dir / (
+                f"attempt_{attempt:03d}_{time.time_ns()}.txt"
+            )
+            record_path.write_text(response_text, encoding="utf-8")
+            logger.info("Invalid model response saved: %s", record_path)
+        except Exception as exc:
+            # Diagnostics must never change solving or scoring behavior.
+            logger.warning("Failed to save invalid model response: %s", exc)
+
     # -------------------------------------------------------------------------
     # Prompt / message construction
     # -------------------------------------------------------------------------
@@ -191,13 +207,14 @@ class SimpleEvol:
         format_suffix = """
 
         Important output rule:
-        Your response must contain exactly two parts in the following order:
-        1. `<solution>...</solution>`, containing only valid JSON with this problem-specific meaning:
-           {solution_schema}
+        Return exactly one JSON object and no Markdown or surrounding text:
+        {{"solution": <problem-specific JSON>, "description": "concise construction strategy"}}
 
-        2. After generating the solution, write a concise description after the solution (you should wrap it using <description> ... </description>).
+        `solution` must have this problem-specific meaning:
+        {solution_schema}
+
         The description must NOT include any current or previous solution, solution fragment, node/job sequence, route, set, assignment, or schedule.
-        Ignore any legacy response-format wording inside the instance instruction; the `<solution>` JSON format above is mandatory.
+        Ignore any legacy response-format wording inside the instance instruction; the JSON object format above is mandatory.
         """.format(solution_schema=self.problem_spec["schema"]).strip()
 
         system_prompt = f"{system_generator_prompt}\n\n{format_suffix}"
@@ -212,13 +229,16 @@ class SimpleEvol:
             },
         ]
 
-    def _build_retry_message_for_bad_format(self):
+    def _build_retry_message_for_bad_format(self, category="missing_solution"):
         return {
             "role": "user",
             "content": (
-                "Invalid solution format. Output exactly "
-                f"`<solution>JSON</solution>` using {self.problem_spec['schema']}, "
-                "followed by `<description>...</description>`.\n\n"
+                f"Invalid solution format ({category}). Start a fresh candidate from "
+                "scratch and return exactly one JSON object with no Markdown or "
+                "surrounding text: "
+                "{\"solution\": <problem-specific JSON>, "
+                "\"description\": \"concise construction strategy\"}. "
+                f"The solution must be {self.problem_spec['schema']}.\n\n"
                 f"Important feasibility warning:\n{self.problem_warn}"
             ),
         }
@@ -236,7 +256,7 @@ class SimpleEvol:
             return max(valid_results, key=lambda x: x["obj"])
 
 
-    def _call_llm_once(self, messages):
+    def _call_llm_once(self, messages, response_mode="text"):
         """
         ReEvo-style normal chat completion, no tool calling.
         Assumes client.chat_completion(...) returns a list-like choices object.
@@ -244,6 +264,7 @@ class SimpleEvol:
         responses = self.client.chat_completion(
             n=1,
             messages=messages,
+            response_mode=response_mode,
         )
         return responses[0].message
 
@@ -333,35 +354,83 @@ class SimpleEvol:
 
     def _extract_solution_and_description(self, text: str):
         if not text:
+            return None, "", "empty_response"
+
+        stripped = text.strip()
+        description = ""
+        solution = None
+        saw_json_container = False
+
+        def unpack(value):
+            if isinstance(value, dict) and "solution" in value:
+                return value.get("solution"), value.get("description", "")
+            if isinstance(value, list):
+                return value, ""
             return None, ""
-        match = re.search(
+
+        # Preferred envelope: one complete JSON object. A complete bare list is
+        # also accepted for backward compatibility and then strictly validated
+        # by the protected problem evaluator.
+        try:
+            value = json.loads(stripped)
+            saw_json_container = True
+            solution, description = unpack(value)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+        tagged = re.search(
             r"<solution>\s*(.*?)\s*</solution>",
             text,
             flags=re.IGNORECASE | re.DOTALL,
         )
-        try:
-            if match:
-                solution = json.loads(match.group(1))
-            else:
-                # Backward compatibility for the dataset's historical
-                # Route/Routes/Set/Order/Schedule response convention.
-                legacy = re.search(
-                    rf"\b{re.escape(self.problem_spec['label'])}\s*:\s*",
-                    text,
-                    flags=re.IGNORECASE,
-                )
-                if not legacy:
-                    return None, ""
-                solution, _ = json.JSONDecoder().raw_decode(text[legacy.end():].lstrip())
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return None, ""
-        if not isinstance(solution, list):
-            return None, ""
+        if solution is None and tagged:
+            saw_json_container = True
+            try:
+                solution = json.loads(tagged.group(1))
+            except (json.JSONDecodeError, TypeError, ValueError):
+                return None, "", "invalid_json"
 
-        description = self._extract_description_from_response(text)
+        # Accept a single complete JSON value inside one fenced code block.
+        if solution is None:
+            fenced = re.fullmatch(
+                r"\s*```(?:json)?\s*(.*?)\s*```\s*",
+                text,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            if fenced:
+                saw_json_container = True
+                try:
+                    solution, description = unpack(json.loads(fenced.group(1)))
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    return None, "", "invalid_json"
+
+        # Historical Route/Routes/Set/Order/Schedule response convention.
+        if solution is None:
+            legacy = re.search(
+                rf"\b{re.escape(self.problem_spec['label'])}\s*:\s*",
+                text,
+                flags=re.IGNORECASE,
+            )
+            if legacy:
+                saw_json_container = True
+                try:
+                    solution, _ = json.JSONDecoder().raw_decode(
+                        text[legacy.end():].lstrip()
+                    )
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    return None, "", "invalid_json"
+
+        if not isinstance(solution, list):
+            category = "invalid_json_shape" if saw_json_container else "missing_solution"
+            return None, "", category
+
+        if not description:
+            description = self._extract_description_from_response(text)
+        if not isinstance(description, str):
+            description = ""
         description = self._normalize_description(description)
 
-        return solution, description
+        return solution, description, "parsed"
 
     def _evaluate_solution(self, solution):
         return self.eval_tool.evaluate(solution, self.current_instance)
@@ -507,6 +576,8 @@ class SimpleEvol:
 
         self.experiment_count = 0
         generation_attempts = 0
+        format_failures = 0
+        consecutive_format_failures = 0
         last_compress_at = 0
         optimal_obj = self._load_optimal_objective()
         while (
@@ -519,26 +590,52 @@ class SimpleEvol:
             logger.info(f"[Iteration {self.experiment_count}] Completed {self.experiment_count}/{self.max_experiments} evaluations")
             logger.info("=" * 70)
 
-            assistant_message = self._call_llm_once(self.messages)
+            assistant_message = self._call_llm_once(
+                self.messages, response_mode="solution"
+            )
             assistant_content = assistant_message.content or ""
 
-            solution, description = self._extract_solution_and_description(assistant_content)
+            solution, description, parse_status = (
+                self._extract_solution_and_description(assistant_content)
+            )
             self._emit_trace(
                 "generation_attempt",
                 attempt=generation_attempts,
                 experiment=self.experiment_count + 1 if solution is not None else None,
                 parsed=solution is not None,
+                parse_status=parse_status,
                 description=description,
             )
             if solution is None:
+                format_failures += 1
+                consecutive_format_failures += 1
                 logger.warning("No valid solution extracted from model response.")
+                self._record_invalid_response(assistant_content, generation_attempts)
                 self._emit_trace(
                     "invalid_format",
                     attempt=generation_attempts,
+                    category=parse_status,
+                    total=format_failures,
+                    consecutive=consecutive_format_failures,
                 )
-                self.messages.append(self._build_retry_message_for_bad_format())
+                retry_message = self._build_retry_message_for_bad_format(parse_status)
+                # Do not stack repeated correction messages. After two
+                # consecutive failures, replace the prior correction with a
+                # clean from-scratch request while preserving abstract history.
+                if (
+                    consecutive_format_failures >= 2
+                    and self.messages
+                    and self.messages[-1].get("role") == "user"
+                    and self.messages[-1].get("content", "").startswith(
+                        "Invalid solution format ("
+                    )
+                ):
+                    self.messages[-1] = retry_message
+                else:
+                    self.messages.append(retry_message)
                 continue
 
+            consecutive_format_failures = 0
             if not description:
                 description = "Construction description unavailable."
 
