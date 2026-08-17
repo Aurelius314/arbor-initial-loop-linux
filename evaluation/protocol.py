@@ -6,6 +6,10 @@ import re
 from typing import Any, Callable
 
 
+class ReferenceObjectiveViolation(ValueError):
+    """A feasible candidate contradicts the dataset's declared optimum."""
+
+
 class CallBudget:
     def __init__(self, backend: Callable[..., str], limit: int):
         self.backend, self.limit, self.calls = backend, limit, 0
@@ -29,9 +33,18 @@ def reference_objective(instance: dict[str, Any]) -> float:
 
 
 def gap_percent(candidate: float, reference: float, obj_type: str) -> float:
+    tolerance = 1e-9 * max(1.0, abs(reference))
     if obj_type == "min":
+        if candidate < reference - tolerance:
+            raise ReferenceObjectiveViolation(
+                f"min candidate objective {candidate} is better than declared optimum {reference}"
+            )
         return 100.0 * (candidate - reference) / abs(reference)
     if obj_type == "max":
+        if candidate > reference + tolerance:
+            raise ReferenceObjectiveViolation(
+                f"max candidate objective {candidate} is better than declared optimum {reference}"
+            )
         return 100.0 * (reference - candidate) / abs(reference)
     raise ValueError("obj_type must be 'min' or 'max'")
 

@@ -18,10 +18,16 @@ def public_instance(instance: dict[str, Any]) -> dict[str, Any]:
 
 
 def _route_length(coords: list[list[float]], route: list[int]) -> float:
-    return sum(math.hypot(
+    path_length = sum(math.hypot(
         coords[route[i]][0] - coords[route[i + 1]][0],
         coords[route[i]][1] - coords[route[i + 1]][1],
     ) for i in range(len(route) - 1))
+    # Match utils-ref.py::calculate_total_distance(): OP routes are
+    # implicitly closed by returning from the final node to the depot.
+    return path_length + math.hypot(
+        coords[route[-1]][0] - coords[route[0]][0],
+        coords[route[-1]][1] - coords[route[0]][1],
+    )
 
 
 def validate_solution(solution: Any, instance: dict[str, Any]) -> list[int]:

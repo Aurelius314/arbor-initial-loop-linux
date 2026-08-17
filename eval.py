@@ -24,7 +24,13 @@ from evaluation.trace import (
     render_problem_digests,
 )
 from evaluation.problems import PROBLEM_NAMES, get_problem
-from evaluation.protocol import CallBudget, gap_percent, macro_average, reference_objective
+from evaluation.protocol import (
+    CallBudget,
+    ReferenceObjectiveViolation,
+    gap_percent,
+    macro_average,
+    reference_objective,
+)
 from initial_loop import SimpleEvol
 
 ROOT = Path(__file__).resolve().parent
@@ -80,9 +86,18 @@ class _EvalTool:
     def evaluate(self, solution: Any, public_instance: dict[str, Any]):
         try:
             solution = self.problem.validate_solution(solution, public_instance)
-            return {"feasible": True, "obj": self.problem.objective(public_instance, solution), "error": None}
+            objective = self.problem.objective(public_instance, solution)
         except Exception as exc:
             return {"feasible": False, "obj": None, "error": str(exc)}
+        # The dataset declares its reference objective to be optimal. A
+        # feasible candidate that beats it therefore indicates an evaluator
+        # constraint bug or corrupt reference data, not a negative gap.
+        gap_percent(
+            objective,
+            reference_objective(self.instances[0]),
+            self.problem.OBJ_TYPE,
+        )
+        return {"feasible": True, "obj": objective, "error": None}
 
     def reference_objective(self, index: int) -> float:
         return reference_objective(self.instances[index])
@@ -159,6 +174,16 @@ def evaluate_problem(
                         problem_name, index, instance_attempt + 1, instance_attempts,
                     )
                     time.sleep(min(2 ** (instance_attempt - 1), 8))
+            except ReferenceObjectiveViolation as exc:
+                objective = None
+                failure = f"evaluation_consistency_error: {exc}"
+                if trace:
+                    trace.emit(
+                        "evaluator_attempt_failed",
+                        attempt=instance_attempt,
+                        category="evaluator_bug",
+                        error=str(exc),
+                    )
             except Exception as exc:
                 objective = None
                 failure = f"error: {type(exc).__name__}: {exc}"
@@ -173,7 +198,11 @@ def evaluate_problem(
                 total_calls += client.call.calls
             if not failure or not failure.startswith("infrastructure_error:"):
                 break
-        gap = None if failure and failure.startswith("infrastructure_error:") else (
+        evaluation_invalid = bool(failure) and failure.startswith((
+            "infrastructure_error:",
+            "evaluation_consistency_error:",
+        ))
+        gap = None if evaluation_invalid else (
             invalid_gap if objective is None else gap_percent(
                 objective, reference_objective(instance), problem.OBJ_TYPE
             )
@@ -353,7 +382,10 @@ def main() -> None:
     print(f"split: {args.split}")
     print(f"instances: {len(rows)}")
     if score is None:
-        print("evaluation_invalid: API/network/authentication failure; rerun required")
+        print(
+            "evaluation_invalid: infrastructure failure or candidate objective "
+            "contradicts the declared optimum; inspect status and rerun after fixing"
+        )
         raise SystemExit(2)
     print("macro_formula: equal-weight mean of the seven problem_mean_optimality_gap values")
     print(f"macro_mean_optimality_gap: {score:.6f}")
