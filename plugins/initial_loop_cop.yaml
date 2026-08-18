@@ -36,8 +36,9 @@ meta_preamble_inject: |
   Do not run a test baseline during initialization. Run `python eval.py --split test` only as
   a held-out admission gate after a candidate's dev score is lower than the current dev trunk
   score (initially the dev baseline score).
-  Do not directly inspect or execute anything under `arbor-bin/`; use only the scoped
-  `ReadDevTrace` tool for current-run, current-node development trajectory evidence.
+  Do not directly inspect or execute anything under `arbor-bin/`. Executors use their scoped
+  `ReadDevTrace` tool for current-run, current-node development trajectory evidence and return
+  the resulting structured findings to the Coordinator through their reports and Idea Tree.
   The host terminal is Windows PowerShell. Use PowerShell-native syntax for every command
   (for example, `Get-ChildItem -Name`); do not use CMD/Bash-only forms such as `dir /B`,
   `grep`, or `&&`. For JSON inspection, use `Get-Content -Raw | ConvertFrom-Json`; avoid
