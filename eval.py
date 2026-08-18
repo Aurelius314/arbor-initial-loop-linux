@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -124,15 +125,24 @@ def evaluate_problem(
     call_limit = 64
     for index, instance in enumerate(instances):
         instance_records = records_dir / f"instance_{index:03d}" if records_dir else None
-        trace = DevTraceCollector(
-            instance_records / "trajectory.jsonl",
-            problem=problem_name,
-            instance=index,
-        ) if instance_records else None
         total_calls = 0
         objective = None
         failure = None
+        selected_trace = None
+        selected_records = None
+        selected_attempt = None
+        selected_attempt_calls = 0
+        attempt_summaries: list[dict[str, Any]] = []
         for instance_attempt in range(1, instance_attempts + 1):
+            attempt_records = (
+                instance_records / "attempts" / f"attempt_{instance_attempt:03d}"
+                if instance_records else None
+            )
+            trace = DevTraceCollector(
+                attempt_records / "trajectory.jsonl",
+                problem=problem_name,
+                instance=index,
+            ) if attempt_records else None
             if trace:
                 trace.emit("evaluator_attempt", attempt=instance_attempt)
             # Each retry receives a fresh client and call budget so a network
@@ -140,7 +150,7 @@ def evaluate_problem(
             client = _Client(
                 backend,
                 limit=call_limit,
-                diagnostics_dir=instance_records,
+                diagnostics_dir=attempt_records,
             )
             solver = SimpleEvol(
                 cfg=solver_cfg,
@@ -150,7 +160,7 @@ def evaluate_problem(
                 eval_tool=_EvalTool(problem, [instance]),
                 problem_name=problem_name,
                 obj_type=problem.OBJ_TYPE,
-                exp_records_dir=instance_records,
+                exp_records_dir=attempt_records,
                 record_instance_index=index,
             )
             if trace:
@@ -195,7 +205,17 @@ def evaluate_problem(
                         error=f"{type(exc).__name__}: {exc}",
                     )
             finally:
-                total_calls += client.call.calls
+                selected_trace = trace
+                selected_records = attempt_records
+                selected_attempt = instance_attempt
+                selected_attempt_calls = client.call.calls
+                total_calls += selected_attempt_calls
+                attempt_summaries.append({
+                    "attempt": instance_attempt,
+                    "calls": selected_attempt_calls,
+                    "status": failure or "ok",
+                    "selected": False,
+                })
             if not failure or not failure.startswith("infrastructure_error:"):
                 break
         evaluation_invalid = bool(failure) and failure.startswith((
@@ -207,25 +227,46 @@ def evaluate_problem(
                 objective, reference_objective(instance), problem.OBJ_TYPE
             )
         )
-        if trace:
-            trace.emit(
+        if selected_trace:
+            selected_trace.emit(
                 "evaluator_result",
                 objective=objective,
                 optimality_gap=gap,
                 calls=total_calls,
+                selected_attempt_calls=selected_attempt_calls,
+                instance_attempts=len(attempt_summaries),
                 status=failure or "ok",
             )
         row = {
             "problem": problem_name, "instance": index, "objective": objective,
             "gap": gap, "calls": total_calls, "status": failure or "ok",
         }
-        if trace:
-            trajectory_digest = trace.digest()
+        if selected_trace:
+            trajectory_digest = selected_trace.digest()
             row["_trajectory_digest"] = trajectory_digest
-            # Persist the completed per-instance trajectory summary separately
-            # from the event-level JSONL and the problem-level aggregate.
+            # Keep the root-level selected trajectory compatible with
+            # ReadDevTrace while retaining every failed/retried attempt under
+            # attempts/ for human audit. Only the selected attempt contributes
+            # experiments to the instance and problem digests.
+            shutil.copy2(selected_trace.path, instance_records / "trajectory.jsonl")
+            if selected_records:
+                for record_path in selected_records.glob("exp_*.txt"):
+                    shutil.copy2(record_path, instance_records / record_path.name)
             (instance_records / "trajectory_digest.json").write_text(
                 json.dumps(trajectory_digest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            if attempt_summaries:
+                attempt_summaries[-1]["selected"] = True
+            (instance_records / "retry_summary.json").write_text(
+                json.dumps({
+                    "problem": problem_name,
+                    "instance": index,
+                    "selected_attempt": selected_attempt,
+                    "attempt_count": len(attempt_summaries),
+                    "total_calls": total_calls,
+                    "attempts": attempt_summaries,
+                }, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
         rows.append(row)

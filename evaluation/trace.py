@@ -100,6 +100,10 @@ class DevTraceCollector:
                 item["event"] == "invalid_format" for item in self.events
             ),
             "model_calls": int(result.get("calls", 0)),
+            "selected_attempt_calls": int(
+                result.get("selected_attempt_calls", result.get("calls", 0))
+            ),
+            "instance_attempts": int(result.get("instance_attempts", 1)),
             "status": str(result.get("status", "unknown")),
             "final_objective": result.get("objective"),
             "final_gap": result.get("optimality_gap"),

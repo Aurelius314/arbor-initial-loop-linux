@@ -404,6 +404,29 @@ class SimpleEvol:
                 except (json.JSONDecodeError, TypeError, ValueError):
                     return None, "", "invalid_json"
 
+        # Some nominally schema-capable providers prepend a short explanation
+        # before the requested envelope. Recover exactly one complete envelope
+        # locally; multiple envelopes remain ambiguous and are retried. This
+        # never forwards a candidate or candidate fragment to another model.
+        if solution is None:
+            envelopes = []
+            decoder = json.JSONDecoder()
+            for match in re.finditer(r"\{", text):
+                try:
+                    value, _end = decoder.raw_decode(text[match.start():])
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
+                if (
+                    isinstance(value, dict)
+                    and isinstance(value.get("solution"), list)
+                ):
+                    envelopes.append(value)
+            if len(envelopes) == 1:
+                saw_json_container = True
+                solution, description = unpack(envelopes[0])
+            elif len(envelopes) > 1:
+                return None, "", "ambiguous_json"
+
         # Historical Route/Routes/Set/Order/Schedule response convention.
         if solution is None:
             legacy = re.search(

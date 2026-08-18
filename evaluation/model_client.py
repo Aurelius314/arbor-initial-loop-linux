@@ -77,6 +77,31 @@ def call_openai_compatible(
     # base = os.environ.get("COP_SOLVER_BASE_URL", "https://api.deepseek.com").rstrip("/")
     model = "deepseek/deepseek-v4-flash-0731"
     # model = os.environ.get("COP_SOLVER_MODEL", "deepseek-v4-flash")
+    provider_only = [
+        item.strip()
+        for item in os.environ.get(
+            "COP_SOLVER_PROVIDER_ONLY",
+            "deepinfra,ambient,inceptron",
+        ).split(",")
+        if item.strip()
+    ]
+    provider_order = [
+        item.strip()
+        for item in os.environ.get(
+            "COP_SOLVER_PROVIDER_ORDER",
+            ",".join(provider_only),
+        ).split(",")
+        if item.strip()
+    ]
+    provider_preferences: dict[str, Any] = {
+        "require_parameters": True,
+        "allow_fallbacks": True,
+    }
+    if provider_only:
+        provider_preferences["only"] = provider_only
+    if provider_order:
+        provider_preferences["order"] = provider_order
+
     request_body: dict[str, Any] = {
         "model": model,
         "temperature": 1.0,
@@ -85,7 +110,7 @@ def call_openai_compatible(
         "stream_options": {"include_usage": True},
         # Only route to endpoints that honor requested parameters such as
         # reasoning.effort="none".
-        "provider": {"require_parameters": True},
+        "provider": provider_preferences,
     }
     if response_mode == "solution":
         # All seven COP outputs are either integer lists or lists of integer
@@ -124,13 +149,15 @@ def call_openai_compatible(
     # disable reasoning generation ("exclude" would only hide it).
     reasoning_effort = "none"
     request_body["reasoning"] = {"effort": reasoning_effort}
-    max_tokens = os.environ.get("COP_SOLVER_MAX_TOKENS")
-    if max_tokens:
-        request_body["max_tokens"] = int(max_tokens)
+    max_tokens = int(os.environ.get("COP_SOLVER_MAX_TOKENS", "4096"))
+    if max_tokens > 0:
+        request_body["max_tokens"] = max_tokens
     payload = json.dumps(request_body).encode()
-    max_attempts = max(1, int(os.environ.get("COP_SOLVER_API_ATTEMPTS", "4")))
-    timeout = float(os.environ.get("COP_SOLVER_API_TIMEOUT", "300"))
-    wall_timeout = float(os.environ.get("COP_SOLVER_API_WALL_TIMEOUT", "300"))
+    max_attempts = max(1, int(os.environ.get("COP_SOLVER_API_ATTEMPTS", "3")))
+    timeout = float(os.environ.get("COP_SOLVER_API_TIMEOUT", "30"))
+    wall_timeout = float(os.environ.get("COP_SOLVER_API_WALL_TIMEOUT", "45"))
+    if timeout <= 0 or wall_timeout <= 0:
+        raise ValueError("solver API timeouts must be positive")
     error: BaseException | None = None
     for attempt in range(max_attempts):
         started = time.monotonic()
