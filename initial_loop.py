@@ -458,16 +458,6 @@ class SimpleEvol:
     def _evaluate_solution(self, solution):
         return self.eval_tool.evaluate(solution, self.current_instance)
 
-    def _load_optimal_objective(self) -> float:
-        return float(self.eval_tool.reference_objective(self.current_instance_index))
-
-    def _calculate_optimality_gap(self, candidate_obj, optimal_obj):
-        if candidate_obj is None or optimal_obj == 0:
-            return None
-        if self.obj_type == "min":
-            return (candidate_obj - optimal_obj) / abs(optimal_obj) * 100.0
-        return (optimal_obj - candidate_obj) / abs(optimal_obj) * 100.0
-
     def _normalize_description(self, text: str, max_chars: int = 2000) -> str:
         if not text:
             return ""
@@ -494,8 +484,6 @@ class SimpleEvol:
             "=== Evaluation Result ===",
             f"feasible: {record['feasible']}",
             f"candidate_obj: {record['obj']}",
-            f"optimal_obj: {record['optimal_obj']}",
-            f"optimality_gap: {record['optimality_gap']}",
             f"exec_time: {record['time']}",
             f"error: {record['error']}",
             "",
@@ -603,7 +591,6 @@ class SimpleEvol:
         format_failures = 0
         consecutive_format_failures = 0
         last_compress_at = 0
-        optimal_obj = self._load_optimal_objective()
         while (
             self.experiment_count < self.max_experiments
             and generation_attempts < self.max_generation_attempts
@@ -683,13 +670,9 @@ class SimpleEvol:
             feasible = evaluation["feasible"]
             candidate_obj = evaluation["obj"]
             error_msg = evaluation["error"]
-            optimality_gap = self._calculate_optimality_gap(candidate_obj, optimal_obj)
-
             logger.info("Evaluation result:")
             logger.info(f"  feasible: {feasible}")
             logger.info(f"  candidate obj: {candidate_obj}")
-            logger.info(f"  optimal obj: {optimal_obj}")
-            logger.info(f"  optimality gap: {optimality_gap}")
             logger.info(f"  time: {exec_time}")
             logger.info(f"  error: {error_msg}")
 
@@ -699,8 +682,6 @@ class SimpleEvol:
                 "description": description,
                 "feasible": feasible,
                 "obj": candidate_obj,
-                "optimal_obj": optimal_obj,
-                "optimality_gap": optimality_gap,
                 "time": exec_time,
                 "error": error_msg,
             }
@@ -710,8 +691,6 @@ class SimpleEvol:
                 experiment=self.experiment_count,
                 feasible=feasible,
                 objective=candidate_obj,
-                optimal_objective=optimal_obj,
-                optimality_gap=optimality_gap,
                 error=error_msg,
                 description=description,
                 execution_seconds=exec_time,
@@ -766,7 +745,6 @@ class SimpleEvol:
         completed_count = len(self.experiment_results)
         feasibility_rate = feasible_count / completed_count if completed_count else 0.0
         best_objective = best_result["obj"] if best_result is not None else None
-        best_optimality_gap = self._calculate_optimality_gap(best_objective, optimal_obj)
 
         logger.info(
             f"Feasibility Rate: {feasibility_rate:.2%} "
@@ -786,7 +764,6 @@ class SimpleEvol:
             error_counts[error] = error_counts.get(error, 0) + 1
         logger.info(f"Evaluation Errors: {json.dumps(error_counts, ensure_ascii=False)}")
         logger.info(f"Best obj: {best_objective}")
-        logger.info(f"Optimality Gap: {best_optimality_gap}")
 
         if self.experiment_results:
             logger.info(f"Completed {len(self.experiment_results)} experiments.")
@@ -833,7 +810,6 @@ class SimpleEvol:
             feasible_experiments=feasible_count,
             best_experiment=best_result["experiment"] if best_result else None,
             best_objective=best_objective,
-            best_optimality_gap=best_optimality_gap,
         )
 
         return best_solution, best_objective

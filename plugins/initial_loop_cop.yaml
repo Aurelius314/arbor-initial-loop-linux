@@ -33,11 +33,17 @@ meta_preamble_inject: |
   You may modify prompts, context and memory management, skills, parsing, error recovery, rollout
   orchestration, problem-specific dispatch inside the shared harness, and other control logic inside
   `initial_loop.py`. Do not modify data, evaluators, model or API configuration, or scoring.
+  Every candidate solution must be constructed directly from an inner solver-LLM response. Do not
+  replace solution construction with deterministic, exact, heuristic, local-search, tabu, ILS, or
+  other problem-solving code. The protected evaluator owns reference objectives and optimality-gap
+  computation; neither value is available to or inferable by `initial_loop.py` during construction.
   Do not run a test baseline during initialization. Run `python eval.py --split test` only as
   a held-out admission gate after a candidate's dev score is lower than the current dev trunk
   score (initially the dev baseline score).
-  Do not directly inspect or execute anything under `arbor-bin/`; use only the scoped
-  `ReadDevTrace` tool for current-run, current-node development trajectory evidence.
+  Do not directly inspect or execute anything under `arbor-bin/`. Executors use their scoped
+  `ReadDevTrace` tool for current-run, current-node development trajectory evidence and return
+  the resulting structured findings to the Coordinator through their reports and Idea Tree.
+
 
 sub_workflow_inject: |
   Edit only the agent harness `initial_loop.py`.
@@ -48,6 +54,11 @@ sub_workflow_inject: |
   `(best_solution, best_objective)` from `SimpleEvol.evolve()`, and computes that instance's gap.
   It then computes one mean gap per class and the equal-weight macro score
   `(TSP + OP + CVRP + MIS + MVC + PFSP + JSSP) / 7`; instance counts never change class weights.
+  Every evaluated candidate and the final returned solution must originate directly from an inner
+  solver-LLM response. The evaluation tool may validate and score such a parsed LLM candidate only;
+  do not use it as a search oracle, and do not implement deterministic/exact/metaheuristic COP
+  solvers in `initial_loop.py`. Reference objectives and experiment gaps are joined into protected
+  trajectory digests only after the mutable harness has finished an instance.
   The only official commands are **exactly as written and must be executed directly from the
   current worktree root**: `python eval.py --split dev` for development, and
   `python eval.py --split test` for held-out admission only after a candidate's dev score is

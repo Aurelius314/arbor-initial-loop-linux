@@ -78,11 +78,10 @@ class _Client:
 
 
 class _EvalTool:
-    """Expose evaluation without placing reference labels in public instances."""
+    """Expose candidate validation/objective without any reference labels."""
 
-    def __init__(self, problem: Any, protected_instances: list[dict[str, Any]]):
+    def __init__(self, problem: Any):
         self.problem = problem
-        self.instances = protected_instances
 
     def evaluate(self, solution: Any, public_instance: dict[str, Any]):
         try:
@@ -90,18 +89,7 @@ class _EvalTool:
             objective = self.problem.objective(public_instance, solution)
         except Exception as exc:
             return {"feasible": False, "obj": None, "error": str(exc)}
-        # The dataset declares its reference objective to be optimal. A
-        # feasible candidate that beats it therefore indicates an evaluator
-        # constraint bug or corrupt reference data, not a negative gap.
-        gap_percent(
-            objective,
-            reference_objective(self.instances[0]),
-            self.problem.OBJ_TYPE,
-        )
         return {"feasible": True, "obj": objective, "error": None}
-
-    def reference_objective(self, index: int) -> float:
-        return reference_objective(self.instances[index])
 
 
 def evaluate_problem(
@@ -157,7 +145,7 @@ def evaluate_problem(
                 root_dir=ROOT,
                 client=client,
                 eval_dataset=[problem.public_instance(instance)],
-                eval_tool=_EvalTool(problem, [instance]),
+                eval_tool=_EvalTool(problem),
                 problem_name=problem_name,
                 obj_type=problem.OBJ_TYPE,
                 exp_records_dir=attempt_records,
@@ -222,11 +210,17 @@ def evaluate_problem(
             "infrastructure_error:",
             "evaluation_consistency_error:",
         ))
-        gap = None if evaluation_invalid else (
-            invalid_gap if objective is None else gap_percent(
-                objective, reference_objective(instance), problem.OBJ_TYPE
+        reference = reference_objective(instance)
+        try:
+            gap = None if evaluation_invalid else (
+                invalid_gap if objective is None else gap_percent(
+                    objective, reference, problem.OBJ_TYPE
+                )
             )
-        )
+        except ReferenceObjectiveViolation as exc:
+            failure = f"evaluation_consistency_error: {exc}"
+            evaluation_invalid = True
+            gap = None
         if selected_trace:
             selected_trace.emit(
                 "evaluator_result",
@@ -242,7 +236,10 @@ def evaluate_problem(
             "gap": gap, "calls": total_calls, "status": failure or "ok",
         }
         if selected_trace:
-            trajectory_digest = selected_trace.digest()
+            trajectory_digest = selected_trace.digest(
+                reference_objective=reference,
+                obj_type=problem.OBJ_TYPE,
+            )
             row["_trajectory_digest"] = trajectory_digest
             # Keep the root-level selected trajectory compatible with
             # ReadDevTrace while retaining every failed/retried attempt under
