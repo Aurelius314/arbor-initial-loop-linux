@@ -43,10 +43,7 @@ meta_preamble_inject: |
   Do not directly inspect or execute anything under `arbor-bin/`. Executors use their scoped
   `ReadDevTrace` tool for current-run, current-node development trajectory evidence and return
   the resulting structured findings to the Coordinator through their reports and Idea Tree.
-  The host terminal is Windows PowerShell. Use PowerShell-native syntax for every command
-  (for example, `Get-ChildItem -Name`); do not use CMD/Bash-only forms such as `dir /B`,
-  `grep`, or `&&`. For JSON inspection, use `Get-Content -Raw | ConvertFrom-Json`; avoid
-  nested quoted expressions in `python -c`.
+
 
 sub_workflow_inject: |
   Edit only the agent harness `initial_loop.py`.
@@ -97,10 +94,6 @@ sub_workflow_inject: |
   Keep the harness candidate compatible with the protected evaluator: 
   the module must expose a callable `SimpleEvol` constructor, 
   and the resulting object must provide `evolve()`.
-  The host terminal is Windows PowerShell. Use PowerShell-native syntax for every command
-  (for example, `Get-ChildItem -Name`); do not use CMD/Bash-only forms such as `dir /B`,
-  `grep`, or `&&`. For JSON inspection, use `Get-Content -Raw | ConvertFrom-Json`; avoid
-  nested quoted expressions in `python -c`.
 
 profiles:
   smoke:
