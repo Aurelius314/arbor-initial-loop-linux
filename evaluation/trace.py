@@ -13,6 +13,8 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
+from .protocol import gap_percent
+
 
 def _compact_text(value: Any, max_chars: int) -> str:
     text = " ".join(str(value or "").split())
@@ -59,8 +61,33 @@ class DevTraceCollector:
         with self.path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    def digest(self) -> dict[str, Any]:
-        experiments = [item for item in self.events if item["event"] == "experiment_result"]
+    def digest(
+        self,
+        *,
+        reference_objective: float,
+        obj_type: str,
+    ) -> dict[str, Any]:
+        """Build protected statistics after the mutable harness has finished.
+
+        Raw trajectory events contain candidate objectives but never the
+        reference objective or gap. Those protected values are joined here so
+        Arbor still receives experiment-level gap curves without exposing the
+        optimum to ``initial_loop.py`` during construction.
+        """
+        experiments = []
+        for item in self.events:
+            if item["event"] != "experiment_result":
+                continue
+            protected_item = dict(item)
+            protected_data = dict(item["data"])
+            objective = protected_data.get("objective")
+            protected_data["optimality_gap"] = (
+                gap_percent(objective, reference_objective, obj_type)
+                if protected_data.get("feasible") and objective is not None
+                else None
+            )
+            protected_item["data"] = protected_data
+            experiments.append(protected_item)
         valid = [
             item for item in experiments
             if item["data"].get("feasible") and item["data"].get("optimality_gap") is not None
@@ -124,7 +151,7 @@ class DevTraceCollector:
             "error_counts": dict(error_counts),
         }
         return {
-            "schema_version": 4,
+            "schema_version": 5,
             "problem": self.problem,
             "instance": self.instance,
             "events": len(self.events),
